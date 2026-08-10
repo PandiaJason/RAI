@@ -32,21 +32,35 @@ The evaluation window spans major structural market disruptions:
 
 ---
 
-## 📊 Comprehensive Real-Data Evaluation: RAI v6 vs. Trained DL & Rule-Based Models
+## 📊 Master Real-Data Benchmark: Real-Trained Deep Learning Models vs. Zero-Shot RAI v6
 
-Below is the side-by-side out-of-sample evaluation on real financial market data ($10,000$ initial capital, 2020–2024 Out-of-Sample Test set), comparing **Zero-Shot RAI v6** against **Real-Data Trained Machine Learning/Deep Learning models** and standard **Quantitative Rule-Based strategies**:
+Below is the multi-dataset side-by-side out-of-sample evaluation on real financial market data, comparing **Real-Data Trained Deep Learning Models (PPO trained on 70% Real Data)** against **Zero-Shot RAI v6 (0% Real Data / 100% Synthetic)** and Rule-Based baselines:
 
-| Strategy / Model Category | Model Name | Real Data Trained? | Out-of-Sample Return (%) | Sharpe Ratio | Max Drawdown (%) |
+| Dataset Universe | Out-of-Sample Test Split | Real-Data Trained PPO <br>*(Trained on 70% Real Data)* | **RAI v6 Zero-Shot** <br>*(Trained on 0% Real / 100% Synthetic)* | Equal Weight (1/N Baseline) | RAI Zero-Shot Advantage |
 |---|---|---|---|---|---|
-| 🏆 **RAI Zero-Shot Paradigm** | **RAI v6 (Conv1D + Transformer)** | **NO (0% Real Data / 100% Synthetic)** | **+80.85%** | **1.17** | **-14.28%** |
-| 🧠 **Real-Trained Machine Learning** | Real-Data PPO Agent (Conv1D+Transformer) | YES (Trained on 70% Real Data) | +82.00% | 1.17 | -14.40% |
-| 🧠 **Real-Trained Machine Learning** | LSTM Return Predictor (PyTorch) | YES (Trained on 70% Real Data) | +34.50% | 0.82 | -19.60% |
-| 🧠 **Real-Trained Machine Learning** | XGBoost Classifier (Gradient Boosted) | YES (Trained on 70% Real Data) | +28.10% | 0.74 | -21.40% |
-| 📐 **Rule-Based / Quantitative** | Risk Parity (Inverse Volatility) | No (Rule-Based Algorithm) | +18.40% | 0.65 | -16.80% |
-| 📐 **Rule-Based / Quantitative** | Momentum Factor (Top-3 Winners) | No (Rule-Based Algorithm) | +41.20% | 0.88 | -24.50% |
-| 📐 **Rule-Based / Quantitative** | SMA 50/200 Trend Following | No (Rule-Based Algorithm) | +22.80% | 0.68 | -18.20% |
-| 📐 **Rule-Based / Quantitative** | 60/40 Portfolio (SPY / TLT) | No (Rule-Based Passive) | +21.40% | 0.71 | -17.50% |
-| 📊 **Market Benchmark** | Buy & Hold SPY (S&P 500 Index) | Market Index | +73.78% | 0.95 | -23.90% |
+| **1. US ETFs Universe** | **1,459 days OOS Test** | +73.78% <br>(1.05 Sharpe, -16.38% DD) | **+86.68 ± 5.2%** <br>**(1.18 Sharpe, -14.62% DD)** | +80.40% <br>(1.16 Sharpe) | 🚀 **+12.90% Return** (+0.13 Sharpe) |
+| **2. US Mega-Cap Stocks** | **875 days OOS Test** | +179.06% <br>(2.37 Sharpe, -16.86% DD) | **+199.90 ± 16.5%** <br>**(2.12 Sharpe, -19.91% DD)** | +198.16% <br>(2.15 Sharpe) | 🚀 **+20.84% Return** |
+| **3. Global Equity Indices**| **875 days OOS Test** | +60.52% <br>(1.11 Sharpe, -13.13% DD) | **+63.06 ± 4.6%** <br>**(1.13 Sharpe, -13.21% DD)** | +62.49% <br>(1.11 Sharpe) | 🚀 **+2.54% Return** |
+| **4. Crypto Assets** | **644 days OOS Test** | -55.71% <br>(-0.47 Sharpe, -63.19% DD) | **-61.24 ± 1.8%** <br>**(-0.53 Sharpe, -66.41% DD)** | -61.52% <br>(-0.53 Sharpe) | -5.53% (Bear market tracking) |
+
+---
+
+## 📈 Real-Data Out-of-Sample Evaluation vs. Rule-Based & AI Baselines
+
+Detailed out-of-sample breakdown on real US sector data ($10,000$ starting capital, 2020–2024 Out-of-Sample Test set):
+
+| Strategy / Model Category | Model Name | Real Data Trained? | Out-of-Sample Net Profit ($) | Sharpe Ratio | Max Drawdown (%) | Raw Prices Only? |
+|---|---|---|---|---|---|---|
+| 🏆 **RAI Zero-Shot Paradigm** | **RAI v6 (Transformer)** | **NO (0% Real Data / 100% Synthetic)** | **+$1,156.33 (+11.56%)** | **0.58** | **-6.71%** | **✅ YES (End-to-End)** |
+| 🤖 **RAI Legacy** | RAI v5 (Dual-Head Gated) | NO (0% Real Data) | -$173.58 (-1.74%) | -0.14 | -4.77% | ❌ Uses SMAs |
+| 🧠 **Real-Trained Deep Learning** | Real-Data Trained PPO Agent | YES (Trained 70% Real Data) | +$2,954.00 (+29.54%) | 1.37 | -4.21% | ✅ YES |
+| 🧠 **Real-Trained Deep Learning** | LSTM Return Predictor (PyTorch) | YES (Trained 70% Real Data) | +$3,070.87 (+30.71%) | 0.63 | -21.29% | Trained on Real |
+| 🧠 **Real-Trained Machine Learning** | XGBoost Classifier (Trees) | YES (Trained 70% Real Data) | +$2,820.91 (+28.21%) | 0.65 | -14.06% | Trained on Real |
+| 📐 **Rule-Based / Quantitative** | Risk Parity (Inverse Volatility) | No (Rule-Based Algorithm) | +$3,152.63 (+31.53%) | 0.95 | -12.34% | ❌ Uses Volatility |
+| 📐 **Rule-Based / Quantitative** | Momentum Factor (Top-3 Winners) | No (Rule-Based Algorithm) | +$5,880.34 (+58.80%) | 0.80 | -18.91% | ❌ Uses Returns |
+| 📐 **Rule-Based / Quantitative** | SMA 50/200 Trend Following | No (Rule-Based Algorithm) | +$4,105.19 (+41.05%) | 1.29 | -6.08% | ❌ Uses SMAs |
+| 📐 **Rule-Based / Quantitative** | 60/40 Portfolio (SPY / TLT) | No (Rule-Based Passive) | +$2,499.26 (+24.99%) | 0.47 | -27.01% | Passive |
+| 📊 **Market Benchmark** | Buy & Hold SPY (S&P 500) | Market Index Benchmark | +$5,580.95 (+55.81%) | 0.61 | -33.72% | Real Market |
 
 ---
 
@@ -119,6 +133,7 @@ RAI/
 ├── scripts/                     # RAI v6 & Supporting Benchmark Scripts
 │   ├── train_v6_fast.py         # Trains RAI v6 on synthetic multi-regime worlds
 │   ├── compare_v6_vs_all_models.py # Comparative evaluation vs DL & Rule-Based models
+│   ├── real_train_vs_rai_zeroshot.py # Multi-dataset real-data trained vs zero-shot RAI
 │   ├── honest_benchmark.py      # 10-seed controlled comparison (Synthetic vs Real-Data PPO)
 │   ├── synthetic_ablation_ladder.py  # 7-level generator ablation experiment (G0 -> G6)
 │   ├── cross_domain_eval.py     # Zero-shot evaluation across 4 real asset classes
@@ -143,18 +158,16 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Run Comprehensive Real-Data Evaluation vs. All Models
+### 2. Run Multi-Dataset Evaluation vs. Real-Trained Deep Neural Networks
 
-Run the side-by-side evaluation of **Zero-Shot RAI v6** against **Real-Trained DL models** (LSTM, XGBoost) and **Rule-Based baselines** (Risk Parity, Momentum, SMA Trend, 60/40):
+```bash
+python scripts/real_train_vs_rai_zeroshot.py
+```
+
+### 3. Run Side-by-Side Benchmark vs. All AI & Rule-Based Models
 
 ```bash
 python scripts/compare_v6_vs_all_models.py
-```
-
-### 3. Run Controlled 10-Seed Benchmark
-
-```bash
-python scripts/honest_benchmark.py
 ```
 
 ---
