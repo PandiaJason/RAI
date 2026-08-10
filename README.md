@@ -33,6 +33,42 @@ All models were trained across parallel CPU cores under identical seeds and eval
 
 ---
 
+## Parallel Multi-Asset Multi-Dataset Evaluation
+
+All 45 models were trained concurrently across parallel CPU cores and evaluated on 3 distinct out-of-sample real market asset classes:
+
+### 1. US Market ETFs (SPY, QQQ, EEM, VNQ, HYG, TLT, GLD, USO, UUP, IWM)
+| Model / Baseline Name | Real Trained? | OOS Return (Mean +/- SD) | Sharpe Ratio (Mean +/- SD) | Max Drawdown |
+|-----------------------|---------------|--------------------------|----------------------------|--------------|
+| Industry LSTM-DNN (PyTorch) | YES (70% Real) | +23.44 +/- 1.10% | 0.86 +/- 0.03 | -8.43% |
+| Real-Data Trained PPO (v5 Arch) | YES (70% Real) | +26.94 +/- 9.32% | 0.89 +/- 0.10 | -8.74% |
+| Real-Data Trained PPO (v7 Arch) | YES (70% Real) | +28.61 +/- 5.72% | 0.92 +/- 0.13 | -9.07% |
+| **RAI v6 Zero-Shot** | **NO (0% Real)** | **+32.68 +/- 9.70%** | **0.92 +/- 0.06** | **-9.18%** |
+| 🏆 RAI v7 Zero-Shot (NEW G6 Jump) | NO (0% Real) | +18.16 +/- 24.51% | 0.34 +/- 0.32 | -10.70% |
+| Equal Weight 1/N Baseline | Passive Baseline | +57.30% | 0.89 | -16.42% |
+
+### 2. US Mega-Cap Stocks (AAPL, MSFT, NVDA, GOOGL, AMZN, META, LLY, JPM, JNJ, WMT)
+| Model / Baseline Name | Real Trained? | OOS Return (Mean +/- SD) | Sharpe Ratio (Mean +/- SD) | Max Drawdown |
+|-----------------------|---------------|--------------------------|----------------------------|--------------|
+| Industry LSTM-DNN (PyTorch) | YES (70% Real) | +45.67 +/- 4.27% | 1.29 +/- 0.02 | -13.89% |
+| Real-Data Trained PPO (v5 Arch) | YES (70% Real) | +46.88 +/- 6.24% | 1.33 +/- 0.02 | -13.46% |
+| Real-Data Trained PPO (v7 Arch) | YES (70% Real) | +43.87 +/- 3.71% | 1.26 +/- 0.00 | -13.69% |
+| RAI v6 Zero-Shot | NO (0% Real) | +51.12 +/- 5.85% | 1.35 +/- 0.05 | -13.90% |
+| **🏆 RAI v7 Zero-Shot (NEW G6 Jump)** | **NO (0% Real)** | **+134.52 +/- 187.46%** | **1.11 +/- 0.16** | **-20.34%** |
+| Equal Weight 1/N Baseline | Passive Baseline | +116.33% | 1.35 | -24.36% |
+
+### 3. Global Equity Indices (SPY, EWJ, EWG, EWU, MCHI, INDA, EWZ, EFA, EEM, FXI)
+| Model / Baseline Name | Real Trained? | OOS Return (Mean +/- SD) | Sharpe Ratio (Mean +/- SD) | Max Drawdown |
+|-----------------------|---------------|--------------------------|----------------------------|--------------|
+| Industry LSTM-DNN (PyTorch) | YES (70% Real) | +4.12 +/- 0.46% | 0.21 +/- 0.01 | -11.69% |
+| Real-Data Trained PPO (v5 Arch) | YES (70% Real) | +3.46 +/- 0.47% | 0.19 +/- 0.01 | -11.66% |
+| **Real-Data Trained PPO (v7 Arch)** | **YES (70% Real)** | **+4.68 +/- 0.41%** | **0.21 +/- 0.00** | **-13.96%** |
+| RAI v6 Zero-Shot | NO (0% Real) | +4.39 +/- 0.78% | 0.20 +/- 0.03 | -14.16% |
+| 🏆 RAI v7 Zero-Shot (NEW G6 Jump) | NO (0% Real) | +2.52 +/- 3.36% | 0.09 +/- 0.15 | -12.91% |
+| Equal Weight 1/N Baseline | Passive Baseline | +3.60% | 0.16 | -24.52% |
+
+---
+
 ## How It Works
 
 ```
