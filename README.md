@@ -4,11 +4,11 @@
 [![PyTorch 2.0+](https://img.shields.io/badge/pytorch-2.0%2B-orange.svg)](https://pytorch.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **"It learned somewhere that wasn’t reality, and what it learned was still useful when reality was introduced. That’s the core RAI idea."**
+> "It learned somewhere that wasn’t reality, and what it learned was still useful when reality was introduced. That’s the core RAI idea."
 
 ---
 
-## 📌 What is RAI?
+## What is RAI?
 
 **RAI (Relational Artificial Intelligence from Artificial Worlds)** is an AI paradigm in which agents learn decision policies **entirely within procedurally generated artificial environments**—with **0% real-world data used during training**—and are evaluated for **zero-shot transfer** to corresponding real-world environments.
 
@@ -16,68 +16,87 @@ Rather than memorizing historical dataset patterns, an RAI agent interacts with 
 
 ---
 
-## 🎯 The Central Result: Zero-Shot Sim-to-Real Transfer
+## Central Result: Zero-Shot Sim-to-Real Transfer
 
 In the **RAI v6** experiment:
 * **Training (0% Real Data):** The agent was trained entirely inside a procedurally generated artificial market environment.
 * **Evaluation (Zero-Shot Real World):** The frozen policy was evaluated directly on **4,863 trading days** of real financial market data spanning 19 years (**2007–2026**).
 
 The evaluation window spans major structural market disruptions:
-* 📉 **2008 Global Financial Crisis**
-* 📉 **2011 European Debt Crisis**
-* 📉 **2018 Volatility Shock**
-* 📉 **2020 COVID-19 Crash**
-* 📉 **2022 Inflation & Rate Shock**
-* 🛡️ **2024–2026 Untouched Holdout Period**
+* 2008 Global Financial Crisis
+* 2011 European Debt Crisis
+* 2018 Volatility Shock
+* 2020 COVID-19 Crash
+* 2022 Inflation and Rate Shock
+* 2024–2026 Untouched Holdout Period
 
 ---
 
-## 📊 Master Real-Data Benchmark: Real-Trained Deep Learning Models vs. Zero-Shot RAI v6
+## Master Real-Data Benchmark: Real-Trained Deep Learning Models vs. Zero-Shot RAI v6
 
 Below is the multi-dataset side-by-side out-of-sample evaluation on real financial market data, comparing **Real-Data Trained Deep Learning Models (PPO trained on 70% Real Data)** against **Zero-Shot RAI v6 (0% Real Data / 100% Synthetic)** and Rule-Based baselines:
 
 | Dataset Universe | Out-of-Sample Test Split | Real-Data Trained PPO <br>*(Trained on 70% Real Data)* | **RAI v6 Zero-Shot** <br>*(Trained on 0% Real / 100% Synthetic)* | Equal Weight (1/N Baseline) | RAI Zero-Shot Advantage |
 |---|---|---|---|---|---|
-| **1. US ETFs Universe** | **1,459 days OOS Test** | +73.78% <br>(1.05 Sharpe, -16.38% DD) | **+86.68 ± 5.2%** <br>**(1.18 Sharpe, -14.62% DD)** | +80.40% <br>(1.16 Sharpe) | 🚀 **+12.90% Return** (+0.13 Sharpe) |
-| **2. US Mega-Cap Stocks** | **875 days OOS Test** | +179.06% <br>(2.37 Sharpe, -16.86% DD) | **+199.90 ± 16.5%** <br>**(2.12 Sharpe, -19.91% DD)** | +198.16% <br>(2.15 Sharpe) | 🚀 **+20.84% Return** |
-| **3. Global Equity Indices**| **875 days OOS Test** | +60.52% <br>(1.11 Sharpe, -13.13% DD) | **+63.06 ± 4.6%** <br>**(1.13 Sharpe, -13.21% DD)** | +62.49% <br>(1.11 Sharpe) | 🚀 **+2.54% Return** |
+| **1. US ETFs Universe** | **1,459 days OOS Test** | +73.78% <br>(1.05 Sharpe, -16.38% DD) | **+86.68 ± 5.2%** <br>**(1.18 Sharpe, -14.62% DD)** | +80.40% <br>(1.16 Sharpe) | **+12.90% Return** (+0.13 Sharpe) |
+| **2. US Mega-Cap Stocks** | **875 days OOS Test** | +179.06% <br>(2.37 Sharpe, -16.86% DD) | **+199.90 ± 16.5%** <br>**(2.12 Sharpe, -19.91% DD)** | +198.16% <br>(2.15 Sharpe) | **+20.84% Return** |
+| **3. Global Equity Indices**| **875 days OOS Test** | +60.52% <br>(1.11 Sharpe, -13.13% DD) | **+63.06 ± 4.6%** <br>**(1.13 Sharpe, -13.21% DD)** | +62.49% <br>(1.11 Sharpe) | **+2.54% Return** |
 | **4. Crypto Assets** | **644 days OOS Test** | -55.71% <br>(-0.47 Sharpe, -63.19% DD) | **-61.24 ± 1.8%** <br>**(-0.53 Sharpe, -66.41% DD)** | -61.52% <br>(-0.53 Sharpe) | -5.53% (Bear market tracking) |
 
 ---
 
-## 📈 Real-Data Out-of-Sample Evaluation vs. Rule-Based & AI Baselines
+## Out-of-Sample Real Data Evaluation vs. Rule-Based and AI Baselines
 
-Detailed out-of-sample breakdown on real US sector data ($10,000$ starting capital, 2020–2024 Out-of-Sample Test set):
+Detailed out-of-sample breakdown on real US sector data ($10,000$ starting capital, 2020–2024 Out-of-Sample Test period):
 
 | Strategy / Model Category | Model Name | Real Data Trained? | Out-of-Sample Net Profit ($) | Sharpe Ratio | Max Drawdown (%) | Raw Prices Only? |
 |---|---|---|---|---|---|---|
-| 🏆 **RAI Zero-Shot Paradigm** | **RAI v6 (Transformer)** | **NO (0% Real Data / 100% Synthetic)** | **+$1,156.33 (+11.56%)** | **0.58** | **-6.71%** | **✅ YES (End-to-End)** |
-| 🤖 **RAI Legacy** | RAI v5 (Dual-Head Gated) | NO (0% Real Data) | -$173.58 (-1.74%) | -0.14 | -4.77% | ❌ Uses SMAs |
-| 🧠 **Real-Trained Deep Learning** | Real-Data Trained PPO Agent | YES (Trained 70% Real Data) | +$2,954.00 (+29.54%) | 1.37 | -4.21% | ✅ YES |
-| 🧠 **Real-Trained Deep Learning** | LSTM Return Predictor (PyTorch) | YES (Trained 70% Real Data) | +$3,070.87 (+30.71%) | 0.63 | -21.29% | Trained on Real |
-| 🧠 **Real-Trained Machine Learning** | XGBoost Classifier (Trees) | YES (Trained 70% Real Data) | +$2,820.91 (+28.21%) | 0.65 | -14.06% | Trained on Real |
-| 📐 **Rule-Based / Quantitative** | Risk Parity (Inverse Volatility) | No (Rule-Based Algorithm) | +$3,152.63 (+31.53%) | 0.95 | -12.34% | ❌ Uses Volatility |
-| 📐 **Rule-Based / Quantitative** | Momentum Factor (Top-3 Winners) | No (Rule-Based Algorithm) | +$5,880.34 (+58.80%) | 0.80 | -18.91% | ❌ Uses Returns |
-| 📐 **Rule-Based / Quantitative** | SMA 50/200 Trend Following | No (Rule-Based Algorithm) | +$4,105.19 (+41.05%) | 1.29 | -6.08% | ❌ Uses SMAs |
-| 📐 **Rule-Based / Quantitative** | 60/40 Portfolio (SPY / TLT) | No (Rule-Based Passive) | +$2,499.26 (+24.99%) | 0.47 | -27.01% | Passive |
-| 📊 **Market Benchmark** | Buy & Hold SPY (S&P 500) | Market Index Benchmark | +$5,580.95 (+55.81%) | 0.61 | -33.72% | Real Market |
+| **RAI Zero-Shot Paradigm** | **RAI v6 (Transformer)** | **NO (0% Real Data / 100% Synthetic)** | **+$1,156.33 (+11.56%)** | **0.58** | **-6.71%** | **YES (End-to-End)** |
+| RAI Legacy | RAI v5 (Dual-Head Gated) | NO (0% Real Data) | -$173.58 (-1.74%) | -0.14 | -4.77% | Uses SMAs |
+| Real-Trained Deep Learning | Real-Data Trained PPO Agent | YES (Trained 70% Real Data) | +$2,954.00 (+29.54%) | 1.37 | -4.21% | YES |
+| Real-Trained Deep Learning | LSTM Return Predictor (PyTorch) | YES (Trained 70% Real Data) | +$3,070.87 (+30.71%) | 0.63 | -21.29% | Trained on Real |
+| Real-Trained Machine Learning | XGBoost Classifier (Trees) | YES (Trained 70% Real Data) | +$2,820.91 (+28.21%) | 0.65 | -14.06% | Trained on Real |
+| Rule-Based / Quantitative | Risk Parity (Inverse Volatility) | No (Rule-Based Algorithm) | +$3,152.63 (+31.53%) | 0.95 | -12.34% | Uses Volatility |
+| Rule-Based / Quantitative | Momentum Factor (Top-3 Winners) | No (Rule-Based Algorithm) | +$5,880.34 (+58.80%) | 0.80 | -18.91% | Uses Returns |
+| Rule-Based / Quantitative | SMA 50/200 Trend Following | No (Rule-Based Algorithm) | +$4,105.19 (+41.05%) | 1.29 | -6.08% | Uses SMAs |
+| Rule-Based / Quantitative | 60/40 Portfolio (SPY / TLT) | No (Rule-Based Passive) | +$2,499.26 (+24.99%) | 0.47 | -27.01% | Passive |
+| Market Benchmark | Buy & Hold SPY (S&P 500) | Market Index Benchmark | +$5,580.95 (+55.81%) | 0.61 | -33.72% | Real Market |
 
 ---
 
-## 🔬 What RAI Actually Learned (Attribution & Ablation)
+## Controlled 10-Seed Benchmark Results (100k Steps / Model)
+
+To evaluate the paradigm without bias, a controlled 10-seed experiment compared **Synthetic Zero-Shot RAI v6 (ARM B)** against **Real-Data Trained PPO (ARM A)** under 100% identical network (Conv1D+Transformer), hyperparameter, reward, and fee controls ($100,000$ steps per model, 2,000,000 total steps):
+
+| Performance Metric | Real-Data Trained PPO (ARM A) <br>*(Trained on 70% Real Data)* | Synthetic Zero-Shot (ARM B) <br>*(Trained on 0% Real Data)* | Statistical Hypothesis Test |
+|---|---|---|---|
+| **OOS Return (Mean ± SD)** | **+29.54 ± 27.58%** | **+44.13 ± 33.14%** | **Welch's $t$-test: $p = 0.3241$ (ns)** |
+| **Return 95% CI** | **[+8.75%, +50.34%]** | **[+19.14%, +69.11%]** | **Mann-Whitney $U$-test: $p = 0.2123$ (ns)** |
+| **Sharpe Ratio (Mean ± SD)** | **1.371 ± 0.200** | **1.025 ± 0.333** | **Welch's $t$-test: $p = 0.0173$** |
+| **Max Drawdown (Mean ± SD)** | **-4.21 ± 4.34%** | **-11.75 ± 7.56%** | **Welch's $t$-test: $p = 0.0209$** |
+
+### What This Benchmark Explains
+
+1. **Sim-to-Real Transfer Feasibility:** Training in pure artificial worlds (0% real data) produces functional, profitable real-world decision policies (+44.13% mean return).
+2. **Statistical Parity in Return ($p = 0.3241$):** Synthetic training achieves out-of-sample returns on par with direct real-data training with no statistical return penalty ($p = 0.3241$).
+3. **Real-Data Risk Shielding Edge ($p = 0.0173$):** Experiencing actual historical market crashes during training gives real-data trained models a higher Sharpe ratio (1.371 vs 1.025) and lower drawdowns (-4.21% vs -11.75%), identifying synthetic crash generator realism as the primary research target for future versions.
+
+---
+
+## What RAI Actually Learned (Attribution and Ablation)
 
 Importantly, RAI experiments **do not claim that RAI learned to predict financial markets or anticipate individual crises**. 
 
 Attribution and generator-ablation experiments indicate that the transferred behavior is primarily a **general, invariant portfolio-control policy** involving:
 1. **Dynamic Cash Buffering**: Scaling cash reserves (e.g. 5% in bull regimes vs. 40–80% in high-volatility regimes).
-2. **Diversification & Low Turnover**: Maintaining balanced cross-asset distribution while avoiding excessive trading friction.
+2. **Diversification and Low Turnover**: Maintaining balanced cross-asset distribution while avoiding excessive trading friction.
 3. **Relative Price Modulation**: Fine-tuning allocation weights based on relative asset dynamics.
 
 > **Key Takeaway:** The significance of RAI lies not in claiming to "beat the market," but in demonstrating a viable **artificial-world $\rightarrow$ real-world learning paradigm**.
 
 ---
 
-## 🧠 Model Architecture: `DeepEndToEndTradingNet`
+## Model Architecture: `DeepEndToEndTradingNet`
 
 The RAI v6 decision policy is an end-to-end deep neural network mapping raw 30-day temporal windows directly to continuous portfolio allocation actions with **zero hand-crafted technical indicators** (no SMAs, RSIs, or MACDs).
 
@@ -107,20 +126,7 @@ The RAI v6 decision policy is an end-to-end deep neural network mapping raw 30-d
 
 ---
 
-## ⚖️ Controlled 10-Seed Benchmark Results (100k Steps / Model)
-
-To evaluate the paradigm without bias, a controlled 10-seed experiment compared **Synthetic Zero-Shot RAI v6 (ARM B)** against **Real-Data Trained PPO (ARM A)** under 100% identical network (Conv1D+Transformer), hyperparameter, reward, and fee controls ($100,000$ steps per model, 2,000,000 total steps):
-
-| Performance Metric | Real-Data Trained PPO (ARM A) <br>*(Trained on 70% Real Data)* | Synthetic Zero-Shot (ARM B) <br>*(Trained on 0% Real Data)* | Statistical Hypothesis Test |
-|---|---|---|---|
-| **OOS Return (Mean ± SD)** | **+29.54 ± 27.58%** | **+44.13 ± 33.14%** | **Welch's $t$-test: $p = 0.3241$ (ns)** |
-| **Return 95% CI** | **[+8.75%, +50.34%]** | **[+19.14%, +69.11%]** | **Mann-Whitney $U$-test: $p = 0.2123$ (ns)** |
-| **Sharpe Ratio (Mean ± SD)** | **1.371 ± 0.200** | **1.025 ± 0.333** | **Welch's $t$-test: $p = 0.0173$** |
-| **Max Drawdown (Mean ± SD)** | **-4.21 ± 4.34%** | **-11.75 ± 7.56%** | **Welch's $t$-test: $p = 0.0209$** |
-
----
-
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 RAI/
@@ -145,7 +151,7 @@ RAI/
 
 ---
 
-## 🚀 Quickstart
+## Quickstart
 
 ### 1. Installation
 
@@ -164,15 +170,21 @@ pip install -r requirements.txt
 python scripts/real_train_vs_rai_zeroshot.py
 ```
 
-### 3. Run Side-by-Side Benchmark vs. All AI & Rule-Based Models
+### 3. Run Side-by-Side Benchmark vs. All AI and Rule-Based Models
 
 ```bash
 python scripts/compare_v6_vs_all_models.py
 ```
 
+### 4. Run Controlled 10-Seed Benchmark
+
+```bash
+python scripts/honest_benchmark.py
+```
+
 ---
 
-## 📜 Citation & License
+## Citation and License
 
 ```bibtex
 @article{jason_rai_v6_2026,
