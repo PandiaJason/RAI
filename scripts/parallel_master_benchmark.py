@@ -88,6 +88,9 @@ def train_single_worker(args):
     elif model_type == "ppo_real":
         env = RealDataTradingEnv(train_prices, episode_len=min(504, len(train_prices) - 35))
         model = DeepEndToEndTradingNet()
+    elif model_type == "ppo_v7_real":
+        env = RealDataTradingEnv(train_prices, episode_len=min(504, len(train_prices) - 35))
+        model = SpatioTemporalTradingNet()
     elif model_type == "rai_v6":
         env = RawPriceSyntheticEnv(num_assets=10, episode_len=504)
         model = DeepEndToEndTradingNet()
@@ -247,7 +250,7 @@ def main():
     print(f"  PARALLEL MASTER BENCHMARK: 4 CORE MODELS ON {n_cores} CPU CORES")
     print("=" * W)
 
-    df = yf.download(TICKERS, start="2007-01-01", end="2026-08-08", progress=False, auto_adjust=True)
+    df = yf.download(TICKERS, start="2010-01-01", end="2026-08-08", progress=False, auto_adjust=True)
     if isinstance(df.columns, pd.MultiIndex):
         df = df['Close']
     df = df[TICKERS].dropna()
@@ -263,7 +266,7 @@ def main():
     print(f"  OOS Test Split  : {len(test_prices)} trading days ({df.index[n_train].date()} → {df.index[-1].date()})\n")
 
     tasks = []
-    model_types = ["lstm_real", "ppo_real", "rai_v6", "rai_v7"]
+    model_types = ["lstm_real", "ppo_real", "ppo_v7_real", "rai_v6", "rai_v7"]
     for mtype in model_types:
         for seed in range(1, N_SEEDS + 1):
             tasks.append((mtype, seed, train_prices))
@@ -286,7 +289,7 @@ def main():
 
     # Evaluate all models on identical 30% OOS test set
     print(f"{'─'*W}")
-    print("  Evaluating all 4 models side-by-side on unseen real out-of-sample test data...")
+    print("  Evaluating all models side-by-side on unseen real out-of-sample test data...")
     print(f"{'─'*W}", flush=True)
 
     eval_out = {}
@@ -304,15 +307,16 @@ def main():
     ew = eval_equal_weight(test_prices)
 
     print(f"\n{'═'*W}")
-    print("  MASTER EVALUATION RESULTS: 4 CORE MODELS SIDE-BY-SIDE")
+    print("  MASTER EVALUATION RESULTS: ALL MODELS SIDE-BY-SIDE")
     print(f"{'═'*W}")
-    print(f"  {'Model / Baseline Name':<42} | {'Real Trained?':<15} | {'OOS Return (%)':<22} | {'Sharpe Ratio':<18} | Max DD (%)")
-    print(f"  {'-'*116}")
+    print(f"  {'Model / Baseline Name':<44} | {'Real Trained?':<15} | {'OOS Return (%)':<22} | {'Sharpe Ratio':<18} | Max DD (%)")
+    print(f"  {'-'*118}")
 
     labels = {
         "lstm_real": ("Industry LSTM-DNN (PyTorch)", "YES (70% Real)"),
-        "ppo_real": ("Real-Data Trained PPO Agent", "YES (70% Real)"),
-        "rai_v6": ("RAI v6 Zero-Shot (Baseline)", "NO (0% Real)"),
+        "ppo_real": ("Real-Data Trained PPO (v5 Arch)", "YES (70% Real)"),
+        "ppo_v7_real": ("Real-Data Trained PPO (v7 Arch)", "YES (70% Real)"),
+        "rai_v6": ("RAI v6 Zero-Shot", "NO (0% Real)"),
         "rai_v7": ("🏆 RAI v7 Zero-Shot (NEW G6 Jump)", "NO (0% Real)"),
     }
 

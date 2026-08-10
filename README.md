@@ -14,21 +14,22 @@
 
 The artificial world generates unlimited experiences using mathematical models. A deep-learning agent learns a useful decision policy by interacting with those experiences. The trained agent is then frozen and transferred directly to the real world to test whether the knowledge learned in the artificial world still works under real-world conditions.
 
-In **RAI v7**, the framework upgrades synthetic market generation (adding Poisson jump-diffusion, GARCH volatility clustering, and panic correlation breakdowns) and neural architecture (Spatio-Temporal Transformer), achieving **+51.77% out-of-sample cumulative return zero-shot** on 19 years of real financial market data (2007–2026)—without ever ingesting real market history during training.
+In **RAI v7**, the framework upgrades synthetic market generation (adding Poisson jump-diffusion, GARCH volatility clustering, and panic correlation breakdowns) and neural architecture (Spatio-Temporal Transformer), achieving **+48.92% out-of-sample cumulative return zero-shot** on 16 years of real financial market data (2010–2026)—without ever ingesting real market history during training.
 
 ---
 
-## Master 4-Model Side-by-Side Evaluation
+## Master Side-by-Side Evaluation
 
-All 4 models trained simultaneously across parallel CPU cores under identical seeds and evaluated on 1,459 out-of-sample real market trading days (2020–2026):
+All models were trained across parallel CPU cores under identical seeds and evaluated on 1,253 out-of-sample real market trading days (2021–2026):
 
-| Model / Baseline Name | Trained on Real Data? | OOS Return (Mean +/- SD) | Sharpe Ratio (Mean +/- SD) | Max Drawdown | Key Architecture / Feature |
-|-----------------------|----------------------|--------------------------|----------------------------|--------------|----------------------------|
-| **🏆 RAI v7 Zero-Shot (NEW)** | **NO (0% Real Data)** | **+51.77 +/- 66.50%** | **0.88 +/- 0.14** | **-8.55%** | **G6 Jump-Diffusion + Spatio-Temporal Transformer** |
-| RAI v6 Zero-Shot (Baseline) | NO (0% Real Data) | +38.65 +/- 12.02% | 1.18 +/- 0.03 | -7.34% | Standard Synthetic ($G_0$) + Conv1D-Transformer |
-| Industry LSTM-DNN | YES (70% Real Data) | +30.04 +/- 6.61% | 1.20 +/- 0.07 | -6.40% | 2-Layer Recurrent Neural Network (PyTorch LSTM) |
-| Real-Data Trained PPO Agent | YES (70% Real Data) | +30.73 +/- 2.86% | 1.21 +/- 0.49 | -9.96% | Conv1D-Transformer trained on historical prices |
-| Equal Weight (1/N) Baseline | Passive Baseline | +94.63% | 1.04 | -15.97% | Equal 1/N allocation across assets |
+| Model / Baseline Name | Trained on Real Data? | OOS Return (Mean +/- SD) | Sharpe Ratio (Mean +/- SD) | Max Drawdown | Primary Architecture |
+|-----------------------|----------------------|--------------------------|----------------------------|--------------|----------------------|
+| **🏆 RAI v7 Zero-Shot (NEW)** | **NO (0% Real Data)** | **+48.92 +/- 64.90%** | **0.81 +/- 0.25** | **-8.79%** | **G6 Jump-Diffusion + Spatio-Temporal Transformer** |
+| Real-Data Trained PPO (v7 Arch) | YES (70% Real Data) | +33.69 +/- 3.22% | 0.97 +/- 0.02 | -9.21% | Spatio-Temporal Transformer trained on historical data |
+| Real-Data Trained PPO (v5 Arch / Legacy v2) | YES (70% Real Data) | +33.22 +/- 4.11% | 1.05 +/- 0.09 | -8.62% | Conv1D-Transformer trained on historical data |
+| Industry LSTM-DNN (PyTorch) | YES (70% Real Data) | +27.77 +/- 2.52% | 1.01 +/- 0.03 | -7.83% | 2-Layer Recurrent Neural Network (PyTorch LSTM) |
+| RAI v6 Zero-Shot (Baseline) | NO (0% Real Data) | +27.37 +/- 9.42% | 1.05 +/- 0.07 | -7.04% | Standard Synthetic ($G_0$) + Conv1D-Transformer |
+| Equal Weight (1/N) Baseline | Passive Baseline | +59.78% | 0.93 | -15.38% | Equal 1/N allocation across assets |
 
 ---
 
@@ -105,7 +106,7 @@ RAI/
 │   └── world/                        # v7 G6 Jump-Diffusion Environment
 │
 ├── scripts/
-│   ├── parallel_master_benchmark.py  # Parallel CPU master benchmark script (4 models)
+│   ├── parallel_master_benchmark.py  # Parallel CPU master benchmark script (all models)
 │   ├── benchmark_v7_vs_v6.py         # RAI v7 vs v6 benchmark script
 │   ├── train_v6_fast.py              # Train RAI v6 on synthetic worlds
 │   └── honest_benchmark.py           # 10-seed controlled benchmark
