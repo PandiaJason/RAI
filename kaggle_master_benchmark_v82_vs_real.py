@@ -584,52 +584,59 @@ def train_rai_v82_procedural_model(seed=42, device=DEVICES[0]):
 
 
 # ==================================================================================================
-# UNIFIED EVALUATION METHODOLOGY
+# UNIFIED EVALUATION METHODOLOGY (CORRECTED PORTFOLIO ACCOUNTING)
 # ==================================================================================================
 def evaluate_model_on_test_data(model, test_prices, device=DEVICES[0]):
     T, N = test_prices.shape
     prices = test_prices / test_prices[0]
-    wealth, peak_wealth = 10000.0, 10000.0
+    wealth = 10000.0
+    peak_wealth = 10000.0
     equity_curve = [10000.0]
-    cash_amount = wealth * 0.10
-    asset_weights = np.ones(N) * (0.90 / N)
+    
+    cash_frac = 0.50
+    stock_weights = np.ones(N) / float(N)
 
     obs_h = []
     for t in range(min(30, T)):
         p, pp = prices[t], prices[max(0, t - 1)]
         obs_h.append(np.concatenate([
             p, np.log(p / np.maximum(1e-4, pp)),
-            [cash_amount / wealth, np.clip((wealth - peak_wealth) / max(1e-4, peak_wealth), -1, 0)]
+            [cash_frac, np.clip((wealth - peak_wealth) / max(1e-4, peak_wealth), -1, 0)]
         ]).astype(np.float32))
 
     for t in range(30, T):
         p_prev, p_curr = prices[t - 1], prices[t]
         asset_returns = (p_curr - p_prev) / np.maximum(1e-4, p_prev)
 
-        invested_wealth = wealth * (1.0 - (cash_amount / wealth))
-        wealth = cash_amount + np.sum(invested_wealth * asset_weights * (1.0 + asset_returns))
-        wealth = max(1e-4, wealth)
+        # 1. Update portfolio wealth based on market returns from t-1 to t
+        cash_val = wealth * cash_frac
+        stock_val = wealth * (1.0 - cash_frac)
+        new_stock_val = np.sum(stock_val * stock_weights * (1.0 + asset_returns))
+        wealth = max(1e-4, cash_val + new_stock_val)
         peak_wealth = max(peak_wealth, wealth)
         equity_curve.append(wealth)
 
+        # 2. Query policy model for target allocation at step t
         flat_obs = np.concatenate(obs_h).astype(np.float32)
         act = model.get_action(flat_obs, device=device)
 
         c_frac = 1.0 / (1.0 + np.exp(-np.clip(act[0], -5.0, 5.0)))
         exp_a = np.exp(act[1:] - np.max(act[1:]))
-        target_w = (exp_a / np.sum(exp_a)) * (1.0 - c_frac)
+        target_stock_w = exp_a / np.sum(exp_a)
 
-        drift = abs((cash_amount / wealth) - c_frac) + np.sum(np.abs(asset_weights - target_w))
+        # 3. Apply transaction fees if allocation drifts significantly
+        drift = abs(cash_frac - c_frac) + np.sum(np.abs(stock_weights - target_stock_w))
         if drift > 0.03:
             wealth -= wealth * drift * 0.001
+            wealth = max(1e-4, wealth)
 
-        cash_amount = wealth * c_frac
-        asset_weights = target_w
+        cash_frac = c_frac
+        stock_weights = target_stock_w
 
         obs_h.pop(0)
         obs_h.append(np.concatenate([
             p_curr, np.log(p_curr / np.maximum(1e-4, p_prev)),
-            [c_frac, np.clip((wealth - peak_wealth) / max(1e-4, peak_wealth), -1, 0)]
+            [cash_frac, np.clip((wealth - peak_wealth) / max(1e-4, peak_wealth), -1, 0)]
         ]).astype(np.float32))
 
     eq_a = np.array(equity_curve)
