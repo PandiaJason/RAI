@@ -1,10 +1,10 @@
 """
 ====================================================================================================
-🚀 RAI v6 DUAL GPU T4 x2 ENGINE (Multi-GPU PyTorch CUDA Enabled)
+🚀 RAI v6 DUAL GPU T4 x2 ENGINE (OPTIMIZED ULTRA-FAST PIPELINE)
 ====================================================================================================
 Overview:
-  Optimized specifically for Kaggle's GPU T4 x2 configuration.
-  Detects both NVIDIA T4 GPUs and utilizes CUDA DataParallel / Multi-GPU worker distribution.
+  Optimized rollout collection + DataParallel mini-batch PPO updates for Kaggle GPU T4 x2.
+  Fast single-device inference during rollout + multi-GPU batch training during PPO updates.
 ====================================================================================================
 """
 
@@ -19,7 +19,6 @@ import yfinance as yf
 
 warnings.filterwarnings('ignore')
 
-# Automatic Dual GPU Device Selection
 N_GPUS = torch.cuda.device_count()
 PRIMARY_DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 SEED = 42
@@ -205,7 +204,7 @@ class DeepEndToEndTradingNet(nn.Module):
 
 
 # ==================================================================================================
-# SECTION 3: DUAL GPU ACCELERATED TRAINING (NVIDIA T4 x2)
+# SECTION 3: ULTRA-FAST DUAL GPU ACCELERATED TRAINING (NVIDIA T4 x2)
 # ==================================================================================================
 def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
     print("=" * 100)
@@ -216,9 +215,7 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
     env = RawPriceSyntheticEnv(num_assets=10, episode_len=504)
     model = DeepEndToEndTradingNet().to(PRIMARY_DEVICE)
 
-    # Enable PyTorch DataParallel across both T4 GPUs if N_GPUS > 1
     if N_GPUS > 1:
-        print(f"  ✓ DataParallel Activated across {N_GPUS} NVIDIA T4 GPUs!")
         parallel_model = nn.DataParallel(model)
     else:
         parallel_model = model
@@ -230,10 +227,12 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
 
     while step < total_steps:
         obs_b, act_b, rew_b, val_b, logp_b = [], [], [], [], []
+        
+        # Single-model fast rollout collection (avoids DataParallel overhead per single step)
         for _ in range(1024):
             obs_t = torch.FloatTensor(obs).unsqueeze(0).to(PRIMARY_DEVICE)
             with torch.no_grad():
-                mean, val = parallel_model(obs_t)
+                mean, val = model(obs_t)
                 dist = Normal(mean, torch.exp(model.log_std))
                 action = dist.sample()
                 logp = dist.log_prob(action).sum(dim=-1)
@@ -245,7 +244,7 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
             if done: obs = env.reset()
 
         with torch.no_grad():
-            _, nval = parallel_model(torch.FloatTensor(obs).unsqueeze(0).to(PRIMARY_DEVICE))
+            _, nval = model(torch.FloatTensor(obs).unsqueeze(0).to(PRIMARY_DEVICE))
             nval = nval.item()
 
         r = np.array(rew_b)
@@ -265,9 +264,10 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
         old_logp_t = torch.FloatTensor(np.array(logp_b)).to(PRIMARY_DEVICE)
         adv_t = (adv_t - adv_t.mean()) / (adv_t.std() + 1e-8)
 
+        # Multi-GPU DataParallel mini-batch PPO update
         for _ in range(4):
             idx = np.random.permutation(len(obs_b))
-            for s in range(0, len(obs_b), 256):  # 256 mini-batch size split across 2 GPUs
+            for s in range(0, len(obs_b), 256):
                 b_idx = idx[s:s + 256]
                 mean, val = parallel_model(o_t[b_idx])
                 dist = Normal(mean, torch.exp(model.log_std))
@@ -285,7 +285,7 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
             print(f"    Step {step:5d} / {total_steps} | Elapsed: {time.time()-t0:.1f}s")
 
     elapsed = time.time() - t0
-    print(f"  ✅ Dual GPU Training complete in {elapsed:.1f} seconds!\n")
+    print(f"  ✅ Dual GPU Training complete in {elapsed:.1f} seconds! Policy frozen for Zero-Shot evaluation.\n")
     model.eval()
     return model
 
