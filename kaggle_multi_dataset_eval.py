@@ -1,18 +1,14 @@
 """
 ====================================================================================================
-🏆 KAGGLE MULTI-DATASET ZERO-SHOT EVALUATION SUITE:
+🏆 KAGGLE MULTI-DATASET ZERO-SHOT EVALUATION SUITE (MATHEMATICALLY NORMALIZED)
    Indian Equities (NSE) | US Stocks & ETFs | Global Forex & Commodities | Crypto Universe
 ====================================================================================================
 Kaggle Notebook / Standalone Multi-Domain Evaluator
 
-Evaluates Zero-Shot Sim-to-Real Transfer across 4 Major Global Asset Universes:
-  1. 🇮🇳 Indian Equities (Nifty 50 Top Leaders: RELIANCE, TCS, HDFCBANK, INFY, ICICIBANK, etc.)
-  2. 🇺🇸 US Tech & Benchmark Index Universe (SPY, QQQ, AAPL, NVDA, MSFT, etc.)
-  3. 🌍 Global Forex & Commodities Universe (EUR/USD, Gold, Crude Oil, Silver, etc.)
-  4. 🪙 Cryptocurrency Universe (BTC, ETH, SOL, BNB, XRP, etc.)
-
-GPU Acceleration:
-  Dual GPU (Kaggle GPU T4 x2) / Single GPU / CPU Multi-Core Compatible.
+Features:
+  1. Unit-Normalized Currency Backtest (Handles Rupees ₹, Dollars $, Forex & Crypto cleanly).
+  2. Realistic Daily P&L and Drawdown Tracking.
+  3. Evaluates Zero-Shot Sim-to-Real Transfer across 4 Major Global Asset Universes.
 ====================================================================================================
 """
 
@@ -38,7 +34,7 @@ np.random.seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
 
-print(f"✓ Multi-Dataset Benchmarking Engine Initialized | Device: {DEVICE} | PyTorch: {torch.__version__}")
+print(f"✓ Multi-Dataset Engine Initialized | Device: {DEVICE} | PyTorch: {torch.__version__}")
 
 
 # ==================================================================================================
@@ -47,7 +43,7 @@ print(f"✓ Multi-Dataset Benchmarking Engine Initialized | Device: {DEVICE} | P
 GLOBAL_UNIVERSES = {
     "1. 🇮🇳 Indian Nifty 50 Equities": {
         "tickers": ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS", 
-                    "BHARTIARTL.NS", "ITC.NS", "SBIN.NS", "LTIM.NS", "TATAMOTORS.NS"],
+                    "BHARTIARTL.NS", "ITC.NS", "SBIN.NS", "LT.NS", "AXISBANK.NS"],
         "period": "2y"
     },
     "2. 🇺🇸 US Tech & Benchmark Index": {
@@ -68,7 +64,7 @@ GLOBAL_UNIVERSES = {
 
 
 # ==================================================================================================
-# SECTION 1: SYNTHETIC WORLD GENERATORS (0% Real Historical Data Intake)
+# SECTION 1: SYNTHETIC WORLD GENERATOR (0% Real Data Intake)
 # ==================================================================================================
 class RawPriceSyntheticEnv:
     """Synthetic World G0: Procedural multi-regime synthetic price environment."""
@@ -300,7 +296,7 @@ def train_rai_v6_model(total_steps=40_000, seed=42):
 
 
 # ==================================================================================================
-# SECTION 4: MULTI-DATASET EVALUATION ENGINE & ALLOCATION GENERATOR
+# SECTION 4: MATHEMATICALLY ACCURATE PORTFOLIO SIMULATION ENGINE
 # ==================================================================================================
 def fetch_universe_prices(tickers, period="2y"):
     """Downloads prices with offline realistic simulation fallback if Kaggle Internet is OFF."""
@@ -331,67 +327,77 @@ def evaluate_universe(model, universe_name, universe_cfg):
     print(f" 📊 ZERO-SHOT EVALUATION: {universe_name}")
     print("═" * 100)
 
-    prices, tickers, latest_date = fetch_universe_prices(universe_cfg["tickers"], period=universe_cfg["period"])
-    T, N = prices.shape
+    raw_prices, tickers, latest_date = fetch_universe_prices(universe_cfg["tickers"], period=universe_cfg["period"])
+    T, N = raw_prices.shape
+
+    # Unit-normalize prices per asset so Rupees ₹, Dollars $, and Crypto ratio scales behave identically
+    prices = raw_prices / raw_prices[0]
 
     initial_wealth = 10000.0
-    cash = initial_wealth * 0.05
-    init_p = prices[30]
-    shares = (initial_wealth * 0.95 / N) / init_p
-    peak = initial_wealth
-    eq = [initial_wealth]
+    wealth = initial_wealth
+    peak_wealth = initial_wealth
+    equity_curve = [initial_wealth]
+
+    # Current holdings: cash amount and asset weights
+    cash_amount = wealth * 0.10
+    asset_weights = np.ones(N) * (0.90 / N)
 
     obs_h = []
     for t in range(30):
         p, pp = prices[t], prices[max(0, t - 1)]
-        w = max(1e-4, cash + np.sum(shares * p))
         obs_h.append(np.concatenate([
-            p / prices[30],
+            p,
             np.log(p / np.maximum(1e-4, pp)),
-            [cash / w, np.clip((w - peak) / max(1e-4, peak), -1, 0)]
+            [cash_amount / wealth, np.clip((wealth - peak_wealth) / max(1e-4, peak_wealth), -1, 0)]
         ]).astype(np.float32))
 
     for t in range(30, T):
+        p_prev = prices[t - 1]
+        p_curr = prices[t]
+        asset_returns = (p_curr - p_prev) / np.maximum(1e-4, p_prev)
+
+        # Update wealth based on previous day's allocation
+        invested_wealth = wealth * (1.0 - (cash_amount / wealth))
+        wealth = cash_amount + np.sum(invested_wealth * asset_weights * (1.0 + asset_returns))
+        wealth = max(1e-4, wealth)
+        peak_wealth = max(peak_wealth, wealth)
+        equity_curve.append(wealth)
+
+        # Predict next allocation decision
         flat_obs = np.concatenate(obs_h).astype(np.float32)
         act = model.get_action(flat_obs, deterministic=True)
 
         cash_logit = np.clip(act[0], -5.0, 5.0)
-        tc = 1.0 / (1.0 + np.exp(-cash_logit))
-        ts = 1.0 - tc
-        ea = np.exp(act[1:] - np.max(act[1:]))
-        taw = (ea / ea.sum()) * ts
+        target_cash_frac = 1.0 / (1.0 + np.exp(-cash_logit))
+        stock_portion = 1.0 - target_cash_frac
 
-        p = prices[t].copy()
-        w = max(1e-4, cash + np.sum(shares * p))
-        caw = (shares * p) / w
-        ccf = cash / w
+        exp_a = np.exp(act[1:] - np.max(act[1:]))
+        target_asset_w = exp_a / np.sum(exp_a)
 
-        if abs(ccf - tc) + np.sum(np.abs(caw - taw)) > 0.03:
-            tv = abs(cash - w * tc) + np.sum(np.abs(shares * p - w * taw))
-            net = max(1e-4, w - tv * 0.001)
-            cash = net * tc
-            shares = (net * taw) / np.maximum(1e-4, p)
+        # Apply transaction fee on rebalancing drift
+        drift = abs((cash_amount / wealth) - target_cash_frac) + np.sum(np.abs(asset_weights - target_asset_w))
+        if drift > 0.03:
+            wealth -= wealth * drift * 0.001  # 10 bps fee
+            wealth = max(1e-4, wealth)
 
-        nw = cash + np.sum(shares * prices[t])
-        peak = max(peak, nw)
-        eq.append(nw)
+        cash_amount = wealth * target_cash_frac
+        asset_weights = target_asset_w
 
-        pp = prices[t - 1]
         obs_h.pop(0)
         obs_h.append(np.concatenate([
-            prices[t] / prices[30],
-            np.log(prices[t] / np.maximum(1e-4, pp)),
-            [cash / max(1e-4, nw), np.clip((nw - peak) / max(1e-4, peak), -1, 0)]
+            p_curr,
+            np.log(p_curr / np.maximum(1e-4, p_prev)),
+            [target_cash_frac, np.clip((wealth - peak_wealth) / max(1e-4, peak_wealth), -1, 0)]
         ]).astype(np.float32))
 
-    eq_a = np.array(eq)
+    eq_a = np.array(equity_curve)
     r = np.diff(eq_a) / np.maximum(1e-8, eq_a[:-1])
     pk = np.maximum.accumulate(eq_a)
     ret_pct = (eq_a[-1] / eq_a[0] - 1) * 100
     sharpe = float(np.mean(r) / np.std(r) * np.sqrt(252)) if np.std(r) > 1e-8 else 0.
     max_dd = float(np.min((eq_a - pk) / pk) * 100)
 
-    # Current Live Portfolio Allocations
+    # Current Live Allocation Breakdown
     last_act = model.get_action(np.concatenate(obs_h).astype(np.float32), deterministic=True)
     c_logit = np.clip(last_act[0], -5.0, 5.0)
     c_frac = 1.0 / (1.0 + np.exp(-c_logit))
@@ -406,10 +412,10 @@ def evaluate_universe(model, universe_name, universe_cfg):
     print(f"  Cash Reserves           : {c_frac*100:>6.2f}%")
     print(f"  Equities/Assets Portion : {s_portion*100:>6.2f}%\n")
 
-    print(f"  {'Asset Ticker':<18} | {'Asset Weight (%)':<20} | {'Current Market Price ($)':<25}")
+    print(f"  {'Asset Ticker':<18} | {'Asset Weight (%)':<20} | {'Current Market Price':<25}")
     print(f"  {'-'*68}")
     for i, t_name in enumerate(tickers):
-        print(f"  {t_name:<18} | {a_weights[i]*100:>18.2f}% | ${prices[-1, i]:>23.2f}")
+        print(f"  {t_name:<18} | {a_weights[i]*100:>18.2f}% | {raw_prices[-1, i]:>23.2f}")
     print(f"  {'-'*68}\n")
 
     return {
