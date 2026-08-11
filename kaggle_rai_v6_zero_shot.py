@@ -10,11 +10,6 @@ Overview:
   a procedurally generated synthetic market world (0% real market data) and deployed zero-shot 
   on real financial market data.
 
-Architecture:
-  - Input: Raw price ratios & daily log-returns (30-day window, zero human indicators).
-  - Neural Network: Multi-Scale Conv1D + 1-Layer Transformer Encoder + Dual Actor/Critic Heads.
-  - RL Algorithm: Proximal Policy Optimization (PPO).
-
 Instructions:
   Run this entire script directly inside any Kaggle GPU/CPU Notebook or local Python environment.
 ====================================================================================================
@@ -392,15 +387,7 @@ def evaluate_zero_shot_real(model, tickers):
     print("=" * 100)
 
 
-# ==================================================================================================
-# MAIN EXECUTION ENTRY POINT
-# ==================================================================================================
 if __name__ == "__main__":
-    # Asset universe for Zero-Shot transfer
     ASSET_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "GOOGL", "AMZN", "META", "TLT", "GLD"]
-
-    # 1. Train agent in 100% synthetic world
     trained_model = train_rai_v6(total_steps=50_000, seed=SEED)
-
-    # 2. Deploy zero-shot on real live market data
     evaluate_zero_shot_real(trained_model, ASSET_UNIVERSE)
