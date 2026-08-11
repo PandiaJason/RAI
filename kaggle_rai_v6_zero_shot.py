@@ -1,6 +1,6 @@
 """
 ====================================================================================================
-🏆 RAI v6: ZERO-SHOT SIM-TO-REAL PORTFOLIO MANAGEMENT
+🏆 RAI v6: ZERO-SHOT SIM-TO-REAL PORTFOLIO MANAGEMENT (GPU ACCELERATED)
 ====================================================================================================
 Kaggle Notebook / Standalone Python Script
 
@@ -10,8 +10,8 @@ Overview:
   a procedurally generated synthetic market world (0% real market data) and deployed zero-shot 
   on real financial market data.
 
-Instructions:
-  Run this entire script directly inside any Kaggle GPU/CPU Notebook or local Python environment.
+GPU Acceleration:
+  Automatically utilizes Kaggle's GPU (NVIDIA T4 / P100) via PyTorch CUDA when an Accelerator is enabled.
 ====================================================================================================
 """
 
@@ -25,12 +25,14 @@ from torch.distributions import Normal
 import yfinance as yf
 
 warnings.filterwarnings('ignore')
-torch.set_num_threads(4)
 
-# Set random seeds for reproducibility
+# Automatic GPU Device Selection
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 SEED = 42
 torch.manual_seed(SEED)
 np.random.seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
 
 
 # ==================================================================================================
@@ -156,7 +158,7 @@ class RawPriceSyntheticEnv:
 
 
 # ==================================================================================================
-# SECTION 2: END-TO-END NEURAL ARCHITECTURE (Conv1D + Transformer Encoder)
+# SECTION 2: GPU-ACCELERATED END-TO-END NEURAL ARCHITECTURE
 # ==================================================================================================
 class DeepEndToEndTradingNet(nn.Module):
     def __init__(self, history_len=30, features_per_step=22, action_dim=11, embed_dim=64, nhead=2):
@@ -200,7 +202,7 @@ class DeepEndToEndTradingNet(nn.Module):
     def get_action(self, flat_obs, deterministic=True):
         with torch.no_grad():
             if isinstance(flat_obs, np.ndarray):
-                flat_obs = torch.FloatTensor(flat_obs).unsqueeze(0) if flat_obs.ndim == 1 else torch.FloatTensor(flat_obs)
+                flat_obs = torch.FloatTensor(flat_obs).to(DEVICE).unsqueeze(0) if flat_obs.ndim == 1 else torch.FloatTensor(flat_obs).to(DEVICE)
             mean, _ = self.forward(flat_obs)
             if deterministic:
                 return mean.cpu().numpy().squeeze(0)
@@ -209,16 +211,16 @@ class DeepEndToEndTradingNet(nn.Module):
 
 
 # ==================================================================================================
-# SECTION 3: PPO AGENT TRAINING (100% Synthetic Environment)
+# SECTION 3: PPO AGENT TRAINING ON GPU (0% Real Market Data Intake)
 # ==================================================================================================
 def train_rai_v6(total_steps=50_000, seed=42):
     print("=" * 100)
-    print("  🚀 TRAINING RAI v6 AGENT IN SYNTHETIC WORLD (0% Real Market Data Intake)")
+    print(f"  🚀 TRAINING RAI v6 AGENT ON KAGGLE GPU ({DEVICE})")
     print("=" * 100)
     t0 = time.time()
 
     env = RawPriceSyntheticEnv(num_assets=10, episode_len=504)
-    model = DeepEndToEndTradingNet()
+    model = DeepEndToEndTradingNet().to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
 
     obs = env.reset(seed=seed)
@@ -227,13 +229,13 @@ def train_rai_v6(total_steps=50_000, seed=42):
     while step < total_steps:
         obs_b, act_b, rew_b, val_b, logp_b = [], [], [], [], []
         for _ in range(1024):
-            obs_t = torch.FloatTensor(obs).unsqueeze(0)
+            obs_t = torch.FloatTensor(obs).unsqueeze(0).to(DEVICE)
             with torch.no_grad():
                 mean, val = model(obs_t)
                 dist = Normal(mean, torch.exp(model.log_std))
                 action = dist.sample()
                 logp = dist.log_prob(action).sum(dim=-1)
-            act_np = action.squeeze(0).numpy()
+            act_np = action.squeeze(0).cpu().numpy()
             nobs, rew, done, _ = env.step(act_np)
             obs_b.append(obs); act_b.append(act_np); rew_b.append(rew); val_b.append(val.item()); logp_b.append(logp.item())
             obs = nobs
@@ -241,7 +243,7 @@ def train_rai_v6(total_steps=50_000, seed=42):
             if done: obs = env.reset()
 
         with torch.no_grad():
-            _, nval = model(torch.FloatTensor(obs).unsqueeze(0))
+            _, nval = model(torch.FloatTensor(obs).unsqueeze(0).to(DEVICE))
             nval = nval.item()
 
         r = np.array(rew_b)
@@ -254,17 +256,17 @@ def train_rai_v6(total_steps=50_000, seed=42):
             adv[t] = gae
         ret = adv + v[:-1]
 
-        o_t = torch.FloatTensor(np.array(obs_b))
-        a_t = torch.FloatTensor(np.array(act_b))
-        adv_t = torch.FloatTensor(adv)
-        ret_t = torch.FloatTensor(ret)
-        old_logp_t = torch.FloatTensor(np.array(logp_b))
+        o_t = torch.FloatTensor(np.array(obs_b)).to(DEVICE)
+        a_t = torch.FloatTensor(np.array(act_b)).to(DEVICE)
+        adv_t = torch.FloatTensor(adv).to(DEVICE)
+        ret_t = torch.FloatTensor(ret).to(DEVICE)
+        old_logp_t = torch.FloatTensor(np.array(logp_b)).to(DEVICE)
         adv_t = (adv_t - adv_t.mean()) / (adv_t.std() + 1e-8)
 
         for _ in range(4):
             idx = np.random.permutation(len(obs_b))
-            for s in range(0, len(obs_b), 64):
-                b_idx = idx[s:s + 64]
+            for s in range(0, len(obs_b), 128):
+                b_idx = idx[s:s + 128]
                 mean, val = model(o_t[b_idx])
                 dist = Normal(mean, torch.exp(model.log_std))
                 new_logp = dist.log_prob(a_t[b_idx]).sum(dim=-1)
@@ -281,7 +283,7 @@ def train_rai_v6(total_steps=50_000, seed=42):
             print(f"    Step {step:5d} / {total_steps} | Elapsed: {time.time()-t0:.1f}s")
 
     elapsed = time.time() - t0
-    print(f"  ✅ Training complete in {elapsed:.1f} seconds! Policy frozen for Zero-Shot evaluation.\n")
+    print(f"  ✅ GPU Training complete in {elapsed:.1f} seconds! Policy frozen for Zero-Shot evaluation.\n")
     model.eval()
     return model
 
