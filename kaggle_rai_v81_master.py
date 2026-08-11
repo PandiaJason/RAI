@@ -2,15 +2,17 @@
 ====================================================================================================
 🏆 KAGGLE MASTER SUITE: RAI v8.1 LARGE PROCEDURAL WORLD ENGINE & RISK-AWARE ARCHITECTURE
 ====================================================================================================
-Kaggle Notebook / Standalone Engine (Mathematically Rigorous & Clean)
+Kaggle Notebook / Standalone Engine (Scientifically Refined & Clean)
 
-Core Scientific Features:
-  1. Active Procedural World Engine (W_proc): Factor models, macro regime segments, correlation 
-     breakdowns, heavy tails, jumps, and execution delays.
-  2. Active Risk & Uncertainty Training: MSE(uncertainty, |return - value|) + Risk-Modulated Actor.
-  3. Masked Episode-Aware GAE: Eliminates value leakage across episode resets.
-  4. 100% Identical Observation Semantics across synthetic training and real evaluations.
-  5. Single-Pass Zero-Shot Real Market Evaluation across 4 Untouched Global Domains:
+Scientific Principles Implemented:
+  1. Active Procedural World Engine (W_proc): Capable of generating millions of synthetic 
+     environments (~200 distinct procedural worlds sampled per 100k step training run).
+  2. FIFO Action Delay Queue: Initialized zero-action queue executing actions at t - delay.
+  3. Constrained Dirichlet Segment Partitioning: Guarantees sum(durations) == total_T and min_dur >= 30.
+  4. Active Prediction-Error Risk Training: MSE(risk_est, |return - value|) + Risk-Modulated Actor.
+  5. Masked Episode-Aware GAE: Eliminates value leakage across episode resets.
+  6. Identical Observation Semantics across synthetic training and real evaluations.
+  7. Single-Pass Zero-Shot Real Market Evaluation across 4 Untouched Global Domains:
      🇮🇳 Indian Equities (NSE) | 🇺🇸 US Tech | 🌍 Forex/Commodities | 🪙 Crypto
 ====================================================================================================
 """
@@ -81,6 +83,7 @@ class ProceduralWorldEngineV81:
 
     def __init__(self, num_assets=10, history_len=30, episode_len=504, initial_cash=10000.0, fee=0.001):
         self.num_assets = num_assets
+        self.action_dim = num_assets + 1
         self.history_len = history_len
         self.episode_len = episode_len
         self.initial_cash = initial_cash
@@ -94,9 +97,11 @@ class ProceduralWorldEngineV81:
         regime_seq = [keys[np.random.randint(len(keys))] for _ in range(n_segments)]
         
         total_T = self.episode_len + self.history_len + 15
-        segment_durations = np.random.dirichlet(np.ones(n_segments) * 2.0) * total_T
-        segment_durations = np.maximum(segment_durations.astype(int), 30)
-        segment_durations[-1] = total_T - sum(segment_durations[:-1])
+        min_dur = 30
+        rem_T = total_T - n_segments * min_dur
+        props = np.random.dirichlet(np.ones(n_segments))
+        segment_durations = (min_dur + props * rem_T).astype(int)
+        segment_durations[-1] = total_T - int(np.sum(segment_durations[:-1]))
 
         n_factors = np.random.randint(2, 5)
         factor_loadings = np.random.uniform(-0.8, 0.8, size=(self.num_assets, n_factors))
@@ -202,7 +207,11 @@ class ProceduralWorldEngineV81:
         self.peak_wealth = self.initial_cash
         self.last_wealth = self.initial_cash
         self.steps_done = 0
-        self.pending_actions = []
+
+        # Clean FIFO Action Delay Queue
+        self.delay = self.world_cfg['execution_delay']
+        self.action_queue = [np.zeros(self.action_dim, dtype=np.float32) for _ in range(self.delay)]
+
         self.obs_history = [self._obs_at(self.start - self.history_len + i) for i in range(self.history_len)]
         return self._flat_obs()
 
@@ -225,9 +234,10 @@ class ProceduralWorldEngineV81:
 
     def step(self, action):
         action = np.nan_to_num(action, nan=0.0)
-        delay = self.world_cfg['execution_delay']
-        self.pending_actions.append(action)
-        exec_action = self.pending_actions.pop(0) if len(self.pending_actions) > delay else action
+        
+        # Clean FIFO Queue Execution Delay
+        self.action_queue.append(action)
+        exec_action = self.action_queue.pop(0)
 
         cash_logit = np.clip(exec_action[0], -5.0, 5.0)
         target_cash_frac = 1.0 / (1.0 + np.exp(-cash_logit))
@@ -290,7 +300,8 @@ class MultiScaleRiskAwareNet(nn.Module):
 
         self.fc = nn.Sequential(nn.Linear(embed_dim * history_len, 128), nn.GELU(), nn.LayerNorm(128))
 
-        self.uncertainty_head = nn.Sequential(nn.Linear(128, 32), nn.GELU(), nn.Linear(32, 1), nn.Softplus())
+        # Prediction-Error Risk Estimator Head
+        self.risk_head = nn.Sequential(nn.Linear(128, 32), nn.GELU(), nn.Linear(32, 1), nn.Softplus())
         self.actor_head = nn.Sequential(nn.Linear(128 + 1, 64), nn.GELU(), nn.Linear(64, action_dim))
         self.critic_head = nn.Linear(128, 1)
 
@@ -312,13 +323,13 @@ class MultiScaleRiskAwareNet(nn.Module):
         flat_repr = trans_out.reshape(b, -1)
         latent = self.fc(flat_repr)
 
-        epistemic_uncertainty = torch.nan_to_num(self.uncertainty_head(latent), nan=0.01)
-        actor_input = torch.cat([latent, epistemic_uncertainty], dim=-1)
+        prediction_error_risk = torch.nan_to_num(self.risk_head(latent), nan=0.01)
+        actor_input = torch.cat([latent, prediction_error_risk], dim=-1)
 
         actor_logits = torch.nan_to_num(self.actor_head(actor_input), nan=0.0)
         value = torch.nan_to_num(self.critic_head(latent), nan=0.0)
 
-        return actor_logits, value, epistemic_uncertainty
+        return actor_logits, value, prediction_error_risk
 
     def get_action(self, flat_obs, deterministic=True):
         with torch.no_grad():
@@ -326,7 +337,7 @@ class MultiScaleRiskAwareNet(nn.Module):
                 flat_obs = torch.FloatTensor(flat_obs).to(DEVICE)
                 if flat_obs.ndim == 1:
                     flat_obs = flat_obs.unsqueeze(0)
-            logits, val, uncertainty = self.forward(flat_obs)
+            logits, val, risk = self.forward(flat_obs)
             return logits.squeeze(0).cpu().numpy() if deterministic else Normal(logits, torch.exp(self.log_std)).sample().squeeze(0).cpu().numpy()
 
 

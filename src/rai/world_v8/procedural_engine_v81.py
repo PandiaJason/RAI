@@ -1,20 +1,21 @@
 """
 ====================================================================================================
-🌌 RAI v8.1 LARGE PROCEDURAL WORLD ENGINE (MATHEMATICALLY RIGOROUS)
+🌌 RAI v8.1 LARGE PROCEDURAL WORLD ENGINE (SCIENTIFICALLY REFINED)
 ====================================================================================================
-Fully active multi-level procedural world generation:
-  1. Macro Regimes (Bull, Bear, Sideways, Stagflation, Liquidity Crisis, Bubble Bust).
-  2. Active Multi-Factor Model: r_{i,t} = sum_k B_{i,k} * F_{k,t} + epsilon_{i,t}.
-  3. Dynamic Correlation Breakdown during crises (rho -> 0.85).
-  4. Execution Delays (d in {0, 1, 2} steps) & Dynamic Slippage.
+Procedurally generates synthetic financial environments across a combinatorial space capable of 
+producing millions of distinct worlds (~200 distinct procedural worlds sampled per 100k step run).
+
+Features:
+  1. Constrained Dirichlet Segment Partitioning (sum(durations) == total_T, duration_i >= 30).
+  2. FIFO Action Delay Queue (executes action from t - delay).
+  3. Active Factor Returns Model: r_{i,t} = sum_k B_{i,k} * F_{k,t} + epsilon_{i,t}.
+  4. Active Correlation Shift during crisis regimes (rho -> 0.85).
 ====================================================================================================
 """
 
 import numpy as np
 
 class ProceduralWorldEngineV81:
-    """Rigorous Large Procedural World Engine with active factor and regime composition."""
-    
     REGIME_PROPERTIES = {
         'bull':             {'drift': (0.15, 0.40),  'vol': (0.10, 0.20), 'corr_shift': 0.0},
         'bear':             {'drift': (-0.45, -0.15),'vol': (0.25, 0.50), 'corr_shift': 0.2},
@@ -26,6 +27,7 @@ class ProceduralWorldEngineV81:
 
     def __init__(self, num_assets=10, history_len=30, episode_len=504, initial_cash=10000.0, fee=0.001):
         self.num_assets = num_assets
+        self.action_dim = num_assets + 1
         self.history_len = history_len
         self.episode_len = episode_len
         self.initial_cash = initial_cash
@@ -34,15 +36,17 @@ class ProceduralWorldEngineV81:
         self.reset()
 
     def _sample_world_parameters(self):
-        # 1. Macro Regime Sequence Segmentation
+        # 1. Macro Regime Sequence & Constrained Dirichlet Partitioning
         n_segments = np.random.randint(3, 7)
         keys = list(self.REGIME_PROPERTIES.keys())
         regime_seq = [keys[np.random.randint(len(keys))] for _ in range(n_segments)]
         
         total_T = self.episode_len + self.history_len + 15
-        segment_durations = np.random.dirichlet(np.ones(n_segments) * 2.0) * total_T
-        segment_durations = np.maximum(segment_durations.astype(int), 30)
-        segment_durations[-1] = total_T - sum(segment_durations[:-1])
+        min_dur = 30
+        rem_T = total_T - n_segments * min_dur
+        props = np.random.dirichlet(np.ones(n_segments))
+        segment_durations = (min_dur + props * rem_T).astype(int)
+        segment_durations[-1] = total_T - int(np.sum(segment_durations[:-1]))
 
         # 2. Multi-Factor Exposure Matrix B (N x K)
         n_factors = np.random.randint(2, 5)
@@ -90,7 +94,6 @@ class ProceduralWorldEngineV81:
             reg_name = cfg['regimes'][reg_idx]
             reg_props = self.REGIME_PROPERTIES[reg_name]
 
-            # Shift correlation matrix during stress regimes
             corr_shift = reg_props['corr_shift']
             target_corr = (1.0 - corr_shift) * cfg['base_corr'] + corr_shift * np.ones((self.num_assets, self.num_assets))
             np.fill_diagonal(target_corr, 1.0)
@@ -101,27 +104,22 @@ class ProceduralWorldEngineV81:
                 L = np.eye(self.num_assets)
 
             drift_annual = np.random.uniform(*reg_props['drift']) + np.random.uniform(-0.05, 0.05, size=self.num_assets)
-            vol_annual = np.random.uniform(*reg_props['vol']) * np.random.uniform(0.85, 1.15, size=self.num_assets)
 
             for _ in range(max(0, min(dur, total_T - day - 1))):
                 day += 1
                 if day >= total_T: break
 
-                # Systemic Factor Returns
                 factor_returns = np.random.normal(0, 1.0, size=cfg['n_factors'])
                 factor_component = cfg['factor_loadings'] @ factor_returns
 
-                # Idiosyncratic Noise with Heavy Tails
                 z_raw = np.random.standard_t(df=cfg['heavy_tail_df'], size=self.num_assets)
                 z_raw = np.clip(z_raw, -4.0, 4.0)
                 z = L @ z_raw + factor_component * 0.3
 
-                # GARCH Volatility update
                 current_vol = omega + alpha * (z**2) + beta * current_vol
                 current_vol = np.clip(current_vol, 1e-6, 0.01)
                 stoch_vol = np.sqrt(current_vol)
 
-                # Jump shocks
                 jump_occured = (np.random.rand(self.num_assets) < cfg['jump_intensity'])
                 jumps = jump_occured * np.random.normal(0, cfg['jump_size_std'], size=self.num_assets)
                 jumps = np.clip(jumps, -0.15, 0.15)
@@ -157,7 +155,11 @@ class ProceduralWorldEngineV81:
         self.peak_wealth = self.initial_cash
         self.last_wealth = self.initial_cash
         self.steps_done = 0
-        self.pending_actions = []
+
+        # Clean FIFO Action Delay Queue
+        self.delay = self.world_cfg['execution_delay']
+        self.action_queue = [np.zeros(self.action_dim, dtype=np.float32) for _ in range(self.delay)]
+
         self.obs_history = [self._obs_at(self.start - self.history_len + i) for i in range(self.history_len)]
         return self._flat_obs()
 
@@ -181,13 +183,9 @@ class ProceduralWorldEngineV81:
     def step(self, action):
         action = np.nan_to_num(action, nan=0.0)
         
-        # Apply execution delay
-        delay = self.world_cfg['execution_delay']
-        self.pending_actions.append(action)
-        if len(self.pending_actions) > delay:
-            exec_action = self.pending_actions.pop(0)
-        else:
-            exec_action = action
+        # Clean FIFO Queue Execution Delay
+        self.action_queue.append(action)
+        exec_action = self.action_queue.pop(0)
 
         cash_logit = np.clip(exec_action[0], -5.0, 5.0)
         target_cash_frac = 1.0 / (1.0 + np.exp(-cash_logit))

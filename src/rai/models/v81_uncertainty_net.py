@@ -1,12 +1,12 @@
 """
 ====================================================================================================
-🧠 RAI v8.1 MULTI-SCALE RISK-AWARE TRADING ARCHITECTURE
+🧠 RAI v8.1 MULTI-SCALE RISK-AWARE NEURAL NETWORK (PREDICTION-ERROR RISK)
 ====================================================================================================
 Features:
   1. Multi-Scale Temporal Convolutions (3d, 10d, 30d signals).
   2. Spatial Cross-Asset Transformer Encoder.
-  3. Active Uncertainty Head (sigma_risk^2) with supervised MSE loss.
-  4. Risk-Modulated Actor Policy Head: Action logits = Actor([latent || uncertainty]).
+  3. Active Prediction-Error Risk Head (sigma_risk^2) trained on MSE(risk, |ret - val|).
+  4. Risk-Modulated Actor Policy Head: Action logits = Actor([latent || prediction_error_risk]).
 ====================================================================================================
 """
 
@@ -23,43 +23,22 @@ class MultiScaleRiskAwareNet(nn.Module):
         self.features_per_step = features_per_step
         self.action_dim = action_dim
 
-        # 1. Multi-Scale Temporal Encoders
         self.conv_short = nn.Conv1d(features_per_step, 24, kernel_size=3, padding=1)
         self.conv_med   = nn.Conv1d(features_per_step, 24, kernel_size=7, padding=3)
         self.conv_long  = nn.Conv1d(features_per_step, 24, kernel_size=15, padding=7)
 
-        self.scale_fusion = nn.Sequential(
-            nn.Conv1d(72, embed_dim, kernel_size=1),
-            nn.GELU()
-        )
+        self.scale_fusion = nn.Sequential(nn.Conv1d(72, embed_dim, kernel_size=1), nn.GELU())
 
-        # 2. Spatial Cross-Asset Transformer
-        trans_layer = nn.TransformerEncoderLayer(
-            d_model=embed_dim, nhead=4, dim_feedforward=256, dropout=0.05, batch_first=True
-        )
+        trans_layer = nn.TransformerEncoderLayer(d_model=embed_dim, nhead=4, dim_feedforward=256, dropout=0.05, batch_first=True)
         self.transformer = nn.TransformerEncoder(trans_layer, num_layers=2)
 
-        # 3. Latent Representation Backbone
-        self.fc = nn.Sequential(
-            nn.Linear(embed_dim * history_len, 128),
-            nn.GELU(),
-            nn.LayerNorm(128)
-        )
+        self.fc = nn.Sequential(nn.Linear(embed_dim * history_len, 128), nn.GELU(), nn.LayerNorm(128))
 
-        # 4. Uncertainty / Risk Head
-        self.uncertainty_head = nn.Sequential(
-            nn.Linear(128, 32),
-            nn.GELU(),
-            nn.Linear(32, 1),
-            nn.Softplus()
-        )
-
-        # 5. Risk-Modulated Actor Policy Head & Critic Head
-        self.actor_head = nn.Sequential(
-            nn.Linear(128 + 1, 64),
-            nn.GELU(),
-            nn.Linear(64, action_dim)
-        )
+        # Prediction-Error Risk Estimator Head
+        self.risk_head = nn.Sequential(nn.Linear(128, 32), nn.GELU(), nn.Linear(32, 1), nn.Softplus())
+        
+        # Risk-Modulated Policy Head
+        self.actor_head = nn.Sequential(nn.Linear(128 + 1, 64), nn.GELU(), nn.Linear(64, action_dim))
         self.critic_head = nn.Linear(128, 1)
 
         self.log_std = nn.Parameter(torch.ones(action_dim) * -0.5)
@@ -80,28 +59,19 @@ class MultiScaleRiskAwareNet(nn.Module):
         flat_repr = trans_out.reshape(b, -1)
         latent = self.fc(flat_repr)
 
-        # Epistemic Uncertainty Estimation
-        epistemic_uncertainty = torch.nan_to_num(self.uncertainty_head(latent), nan=0.01)
+        prediction_error_risk = torch.nan_to_num(self.risk_head(latent), nan=0.01)
+        actor_input = torch.cat([latent, prediction_error_risk], dim=-1)
 
-        # Risk-Modulated Policy Input: Concatenate latent features + estimated uncertainty
-        actor_input = torch.cat([latent, epistemic_uncertainty], dim=-1)
         actor_logits = torch.nan_to_num(self.actor_head(actor_input), nan=0.0)
         value = torch.nan_to_num(self.critic_head(latent), nan=0.0)
 
-        return actor_logits, value, epistemic_uncertainty
+        return actor_logits, value, prediction_error_risk
 
-    def get_action(self, flat_obs, deterministic=True, device='cpu'):
+    def get_action(self, flat_obs, deterministic=True):
         with torch.no_grad():
             if isinstance(flat_obs, np.ndarray):
-                flat_obs = torch.FloatTensor(flat_obs).to(device)
+                flat_obs = torch.FloatTensor(flat_obs).to(DEVICE)
                 if flat_obs.ndim == 1:
                     flat_obs = flat_obs.unsqueeze(0)
-            logits, val, uncertainty = self.forward(flat_obs)
-            
-            if deterministic:
-                action = logits.squeeze(0).cpu().numpy()
-            else:
-                dist = Normal(logits, torch.exp(self.log_std))
-                action = dist.sample().squeeze(0).cpu().numpy()
-                
-            return np.nan_to_num(action, nan=0.0), uncertainty.squeeze(0).cpu().numpy().item()
+            logits, val, risk = self.forward(flat_obs)
+            return logits.squeeze(0).cpu().numpy() if deterministic else Normal(logits, torch.exp(self.log_std)).sample().squeeze(0).cpu().numpy()
