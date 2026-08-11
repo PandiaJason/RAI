@@ -2,7 +2,7 @@
 ====================================================================================================
 🌌 KAGGLE MASTER SUITE: RAI v8 LARGE PROCEDURAL WORLD ENGINE & UNCERTAINTY-AWARE TRANSFER
 ====================================================================================================
-Kaggle Notebook / Standalone Engine
+Kaggle Notebook / Standalone Engine (Numerically Stable)
 
 Core Innovations:
   1. Procedural World Sampling (W_proc): Samples millions of distinct synthetic financial 
@@ -92,15 +92,15 @@ class ProceduralWorldEngine:
         d = np.sqrt(np.diag(corr_matrix))
         corr_matrix = corr_matrix / np.outer(d, d)
         
-        volatility_scale = np.random.uniform(0.08, 0.65, size=self.num_assets)
-        drift_scale = np.random.uniform(-0.40, 0.40, size=self.num_assets)
-        jump_intensity = np.random.uniform(0.005, 0.05)
-        jump_size_std = np.random.uniform(0.02, 0.12)
-        mean_reversion_speed = np.random.uniform(0.0, 0.15)
-        heavy_tail_df = np.random.uniform(3.0, 10.0)
+        volatility_scale = np.random.uniform(0.10, 0.45, size=self.num_assets)
+        drift_scale = np.random.uniform(-0.35, 0.35, size=self.num_assets)
+        jump_intensity = np.random.uniform(0.005, 0.03)
+        jump_size_std = np.random.uniform(0.01, 0.06)
+        mean_reversion_speed = np.random.uniform(0.0, 0.10)
+        heavy_tail_df = np.random.uniform(4.0, 15.0)
         
         execution_delay = np.random.choice([0, 1, 2], p=[0.7, 0.2, 0.1])
-        noise_level = np.random.uniform(0.001, 0.01)
+        noise_level = np.random.uniform(0.001, 0.005)
 
         return {
             'regimes': regime_seq,
@@ -125,21 +125,24 @@ class ProceduralWorldEngine:
         except np.linalg.LinAlgError:
             L = np.eye(self.num_assets)
 
-        init_prices = np.random.uniform(15.0, 500.0, size=self.num_assets)
+        init_prices = np.random.uniform(20.0, 300.0, size=self.num_assets)
         prices[0] = init_prices
 
-        omega, alpha, beta = 0.00001, 0.08, 0.88
+        omega, alpha, beta = 0.000005, 0.05, 0.90
         current_vol = (cfg['volatility'] / np.sqrt(252.0))**2
 
         for t in range(1, total_T):
             z_raw = np.random.standard_t(df=cfg['heavy_tail_df'], size=self.num_assets)
+            z_raw = np.clip(z_raw, -4.0, 4.0)
             z = L @ z_raw
 
             current_vol = omega + alpha * (z**2) + beta * current_vol
-            stoch_vol = np.sqrt(np.maximum(1e-6, current_vol))
+            current_vol = np.clip(current_vol, 1e-6, 0.01)
+            stoch_vol = np.sqrt(current_vol)
 
             jump_occured = (np.random.rand(self.num_assets) < cfg['jump_intensity'])
             jumps = jump_occured * np.random.normal(0, cfg['jump_size_std'], size=self.num_assets)
+            jumps = np.clip(jumps, -0.15, 0.15)
 
             mr_drift = cfg['mean_reversion_speed'] * (np.log(init_prices) - np.log(np.maximum(1e-4, prices[t-1]))) / 252.0
             total_drift = (cfg['drift'] / 252.0) + mr_drift
@@ -150,9 +153,10 @@ class ProceduralWorldEngine:
             if cfg['noise_level'] > 0:
                 log_return += np.random.normal(0, cfg['noise_level'], size=self.num_assets)
 
+            log_return = np.clip(log_return, -0.25, 0.25)
             prices[t] = np.maximum(0.01, p_prev * np.exp(log_return))
 
-        return prices
+        return np.nan_to_num(prices, nan=100.0, posinf=500.0, neginf=0.01)
 
     def reset(self, seed=None):
         if seed is not None:
@@ -163,7 +167,7 @@ class ProceduralWorldEngine:
         self.current_step = self.start
         self.cash = self.initial_cash * 0.5
         init_p = self.prices[self.current_step]
-        self.shares = (self.initial_cash * 0.5 / self.num_assets) / init_p
+        self.shares = (self.initial_cash * 0.5 / self.num_assets) / np.maximum(1e-4, init_p)
         self.peak_wealth = self.initial_cash
         self.last_wealth = self.initial_cash
         self.steps_done = 0
@@ -176,16 +180,19 @@ class ProceduralWorldEngine:
     def _obs_at(self, t):
         p = self.prices[t]; p_prev = self.prices[max(0, t-1)]
         w = max(1e-4, self.cash + np.sum(self.shares * p))
-        norm_prices = p / self.prices[self.start]
+        norm_prices = p / np.maximum(1e-4, self.prices[self.start])
         log_rets = np.log(p / np.maximum(1e-4, p_prev))
+        log_rets = np.clip(log_rets, -0.5, 0.5)
         cash_ratio = self.cash / w
         dd = np.clip((w - self.peak_wealth) / max(1e-4, self.peak_wealth), -1.0, 0.0)
-        return np.concatenate([norm_prices, log_rets, [cash_ratio, dd]]).astype(np.float32)
+        obs = np.concatenate([norm_prices, log_rets, [cash_ratio, dd]]).astype(np.float32)
+        return np.nan_to_num(obs, nan=0.0, posinf=1.0, neginf=-1.0)
 
     def _flat_obs(self):
         return np.concatenate(self.obs_history).astype(np.float32)
 
     def step(self, action):
+        action = np.nan_to_num(action, nan=0.0)
         cash_logit = np.clip(action[0], -5.0, 5.0)
         target_cash_frac = 1.0 / (1.0 + np.exp(-cash_logit))
         stock_portion = 1.0 - target_cash_frac
@@ -208,10 +215,11 @@ class ProceduralWorldEngine:
 
         self.current_step += 1
         self.steps_done += 1
-        new_wealth = self._wealth()
+        new_wealth = max(1e-4, self._wealth())
         self.peak_wealth = max(self.peak_wealth, new_wealth)
 
         daily_ret = (new_wealth - self.last_wealth) / max(1e-4, self.last_wealth)
+        daily_ret = np.clip(daily_ret, -0.5, 0.5)
         reward = daily_ret * 5.0
         if daily_ret < 0: reward *= 2.0
         drawdown = (new_wealth - self.peak_wealth) / max(1e-4, self.peak_wealth)
@@ -222,7 +230,7 @@ class ProceduralWorldEngine:
         self.obs_history.pop(0)
         self.obs_history.append(self._obs_at(self.current_step))
 
-        return self._flat_obs(), reward, done, {"portfolio_value": new_wealth}
+        return self._flat_obs(), float(reward), done, {"portfolio_value": new_wealth}
 
 
 # ==================================================================================================
@@ -252,6 +260,7 @@ class MultiScaleUncertaintyNet(nn.Module):
         self.log_std = nn.Parameter(torch.ones(action_dim) * -0.5)
 
     def forward(self, flat_obs):
+        flat_obs = torch.nan_to_num(flat_obs, nan=0.0, posinf=1.0, neginf=-1.0)
         b = flat_obs.shape[0]
         x = flat_obs.reshape(b, self.history_len, self.features_per_step).transpose(1, 2)
 
@@ -266,7 +275,11 @@ class MultiScaleUncertaintyNet(nn.Module):
         flat_repr = trans_out.reshape(b, -1)
         latent = self.fc(flat_repr)
 
-        return self.actor_head(latent), self.critic_head(latent), self.uncertainty_head(latent)
+        actor_logits = torch.nan_to_num(self.actor_head(latent), nan=0.0)
+        value = torch.nan_to_num(self.critic_head(latent), nan=0.0)
+        epistemic_uncertainty = torch.nan_to_num(self.uncertainty_head(latent), nan=0.01)
+
+        return actor_logits, value, epistemic_uncertainty
 
     def get_action(self, flat_obs, deterministic=True):
         with torch.no_grad():
@@ -309,7 +322,7 @@ def train_rai_v8_procedural_model(total_steps=50_000, seed=42):
             obs = nobs
             step += 1
             if done:
-                obs = env.reset()  # Resets and generates a brand new procedural world!
+                obs = env.reset()
 
         with torch.no_grad():
             _, nval, _ = model(torch.FloatTensor(obs).unsqueeze(0).to(DEVICE))
@@ -495,5 +508,5 @@ def execute_rai_v8_master():
     print("═" * 105 + "\n")
 
 
-if __name__ == "__main__":
-    execute_rai_v8_master()
+execute_rai_v8_master()
+```

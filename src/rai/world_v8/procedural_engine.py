@@ -1,17 +1,10 @@
 """
 ====================================================================================================
-🌌 RAI v8 LARGE PROCEDURAL WORLD ENGINE (W_proc)
+🌌 RAI v8 LARGE PROCEDURAL WORLD ENGINE (NUMERICALLY STABLE)
 ====================================================================================================
 Generates millions of distinct synthetic financial universes across arbitrary asset counts, 
-macro regimes, cross-asset lead-lag relationships, volatility dynamics, and micro shocks.
-
-Hierarchical World Composition:
-  1. Macro Regimes: Bull, Bear, Sideways, High Inflation, Liquidity Crisis, Sudden Reversals.
-  2. Market Dynamics: GARCH(1,1) Stochastic Volatility, Jump-Diffusion, Student-t Heavy Tails,
-                      Ornstein-Uhlenbeck Mean Reversion, Momentum.
-  3. Asset Relationship Graph: Factor Exposures, Dynamic Correlation Breakdown Matrices, 
-                               Sector Lead/Lag Phase Shifts.
-  4. Micro Dynamics & Noise: Dynamic Spreads, Execution Delays, Asymmetric Fees, Missing Data.
+macro regimes, GARCH volatility, heavy tails, jumps, and correlation breakdowns with 
+strict numerical stability bounds (No NaNs/Infs).
 ====================================================================================================
 """
 
@@ -33,31 +26,26 @@ class ProceduralWorldEngine:
 
     def _sample_world_parameters(self):
         """Randomly composes a unique artificial world configuration."""
-        # 1. Macro Regime Sequence
         n_regimes = np.random.randint(3, 8)
         regime_seq = np.random.choice(self.MACRO_REGIMES, size=n_regimes)
         
-        # 2. Cross-Asset Factor & Correlation Dynamics
         n_factors = np.random.randint(2, 6)
         factor_loadings = np.random.uniform(-0.8, 0.8, size=(self.num_assets, n_factors))
         
-        # Correlation matrix with random decoupling intensity
         A = np.random.randn(self.num_assets, self.num_assets)
         corr_matrix = A @ A.T
         d = np.sqrt(np.diag(corr_matrix))
         corr_matrix = corr_matrix / np.outer(d, d)
         
-        # 3. Market Dynamic Properties
-        volatility_scale = np.random.uniform(0.08, 0.65, size=self.num_assets)
-        drift_scale = np.random.uniform(-0.40, 0.40, size=self.num_assets)
-        jump_intensity = np.random.uniform(0.005, 0.05)
-        jump_size_std = np.random.uniform(0.02, 0.12)
-        mean_reversion_speed = np.random.uniform(0.0, 0.15)
-        heavy_tail_df = np.random.uniform(3.0, 10.0)  # Student-t degrees of freedom
+        volatility_scale = np.random.uniform(0.10, 0.45, size=self.num_assets)
+        drift_scale = np.random.uniform(-0.35, 0.35, size=self.num_assets)
+        jump_intensity = np.random.uniform(0.005, 0.03)
+        jump_size_std = np.random.uniform(0.01, 0.06)
+        mean_reversion_speed = np.random.uniform(0.0, 0.10)
+        heavy_tail_df = np.random.uniform(4.0, 15.0)
         
-        # 4. Micro Noise & Execution Friction
         execution_delay = np.random.choice([0, 1, 2], p=[0.7, 0.2, 0.1])
-        noise_level = np.random.uniform(0.001, 0.01)
+        noise_level = np.random.uniform(0.001, 0.005)
 
         return {
             'regimes': regime_seq,
@@ -74,52 +62,50 @@ class ProceduralWorldEngine:
         }
 
     def _generate_procedural_prices(self, cfg):
-        """Simulates price trajectories inside the sampled procedural world."""
+        """Simulates price trajectories inside the sampled procedural world with strict bounds."""
         total_T = self.episode_len + self.history_len + 15
         prices = np.zeros((total_T, self.num_assets), dtype=np.float64)
 
-        # Cholesky decomposition for correlated noise
         try:
             L = np.linalg.cholesky(cfg['corr_matrix'])
         except np.linalg.LinAlgError:
             L = np.eye(self.num_assets)
 
-        init_prices = np.random.uniform(15.0, 500.0, size=self.num_assets)
+        init_prices = np.random.uniform(20.0, 300.0, size=self.num_assets)
         prices[0] = init_prices
 
-        # GARCH(1,1) Volatility parameters
-        omega = 0.00001
-        alpha = 0.08
-        beta = 0.88
+        # Stable GARCH(1,1) Volatility parameters
+        omega = 0.000005
+        alpha = 0.05
+        beta = 0.90
         current_vol = (cfg['volatility'] / np.sqrt(252.0))**2
 
         for t in range(1, total_T):
-            # Correlated random innovations
             z_raw = np.random.standard_t(df=cfg['heavy_tail_df'], size=self.num_assets)
+            z_raw = np.clip(z_raw, -4.0, 4.0)
             z = L @ z_raw
 
-            # Update GARCH volatility
             current_vol = omega + alpha * (z**2) + beta * current_vol
-            stoch_vol = np.sqrt(np.maximum(1e-6, current_vol))
+            current_vol = np.clip(current_vol, 1e-6, 0.01)  # Bound daily volatility max 10%
+            stoch_vol = np.sqrt(current_vol)
 
-            # Jump Process
             jump_occured = (np.random.rand(self.num_assets) < cfg['jump_intensity'])
             jumps = jump_occured * np.random.normal(0, cfg['jump_size_std'], size=self.num_assets)
+            jumps = np.clip(jumps, -0.15, 0.15)
 
-            # Mean-reversion drift component
             mr_drift = cfg['mean_reversion_speed'] * (np.log(init_prices) - np.log(np.maximum(1e-4, prices[t-1]))) / 252.0
             total_drift = (cfg['drift'] / 252.0) + mr_drift
 
             p_prev = prices[t - 1]
             log_return = (total_drift - 0.5 * stoch_vol**2) + stoch_vol * z + jumps
             
-            # Micro noise injection
             if cfg['noise_level'] > 0:
                 log_return += np.random.normal(0, cfg['noise_level'], size=self.num_assets)
 
+            log_return = np.clip(log_return, -0.25, 0.25)  # Cap daily return to +/- 25%
             prices[t] = np.maximum(0.01, p_prev * np.exp(log_return))
 
-        return prices
+        return np.nan_to_num(prices, nan=100.0, posinf=500.0, neginf=0.01)
 
     def reset(self, seed=None):
         if seed is not None:
@@ -130,7 +116,7 @@ class ProceduralWorldEngine:
         self.current_step = self.start
         self.cash = self.initial_cash * 0.5
         init_p = self.prices[self.current_step]
-        self.shares = (self.initial_cash * 0.5 / self.num_assets) / init_p
+        self.shares = (self.initial_cash * 0.5 / self.num_assets) / np.maximum(1e-4, init_p)
         self.peak_wealth = self.initial_cash
         self.last_wealth = self.initial_cash
         self.steps_done = 0
@@ -143,16 +129,19 @@ class ProceduralWorldEngine:
     def _obs_at(self, t):
         p = self.prices[t]; p_prev = self.prices[max(0, t-1)]
         w = max(1e-4, self.cash + np.sum(self.shares * p))
-        norm_prices = p / self.prices[self.start]
+        norm_prices = p / np.maximum(1e-4, self.prices[self.start])
         log_rets = np.log(p / np.maximum(1e-4, p_prev))
+        log_rets = np.clip(log_rets, -0.5, 0.5)
         cash_ratio = self.cash / w
         dd = np.clip((w - self.peak_wealth) / max(1e-4, self.peak_wealth), -1.0, 0.0)
-        return np.concatenate([norm_prices, log_rets, [cash_ratio, dd]]).astype(np.float32)
+        obs = np.concatenate([norm_prices, log_rets, [cash_ratio, dd]]).astype(np.float32)
+        return np.nan_to_num(obs, nan=0.0, posinf=1.0, neginf=-1.0)
 
     def _flat_obs(self):
         return np.concatenate(self.obs_history).astype(np.float32)
 
     def step(self, action):
+        action = np.nan_to_num(action, nan=0.0)
         cash_logit = np.clip(action[0], -5.0, 5.0)
         target_cash_frac = 1.0 / (1.0 + np.exp(-cash_logit))
         stock_portion = 1.0 - target_cash_frac
@@ -175,10 +164,11 @@ class ProceduralWorldEngine:
 
         self.current_step += 1
         self.steps_done += 1
-        new_wealth = self._wealth()
+        new_wealth = max(1e-4, self._wealth())
         self.peak_wealth = max(self.peak_wealth, new_wealth)
 
         daily_ret = (new_wealth - self.last_wealth) / max(1e-4, self.last_wealth)
+        daily_ret = np.clip(daily_ret, -0.5, 0.5)
         reward = daily_ret * 5.0
         if daily_ret < 0: reward *= 2.0
         drawdown = (new_wealth - self.peak_wealth) / max(1e-4, self.peak_wealth)
@@ -189,4 +179,4 @@ class ProceduralWorldEngine:
         self.obs_history.pop(0)
         self.obs_history.append(self._obs_at(self.current_step))
 
-        return self._flat_obs(), reward, done, {"portfolio_value": new_wealth}
+        return self._flat_obs(), float(reward), done, {"portfolio_value": new_wealth}

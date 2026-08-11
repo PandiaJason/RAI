@@ -1,12 +1,12 @@
 """
 ====================================================================================================
-🧠 RAI v8 MULTI-SCALE UNCERTAINTY-AWARE TRADING ARCHITECTURE
+🧠 RAI v8 MULTI-SCALE UNCERTAINTY-AWARE TRADING ARCHITECTURE (STABLE)
 ====================================================================================================
 Includes:
   1. Multi-Scale Temporal Encoders (Kernel Sizes 3, 7, 15 for 3d, 10d, 30d signals).
   2. Spatial Cross-Asset Attention Transformer.
   3. Risk & Epistemic Uncertainty Estimation Head (sigma_risk^2).
-  4. Actor Logits & Critic Value Function.
+  4. Actor Logits & Critic Value Function with torch.nan_to_num safeguards.
 ====================================================================================================
 """
 
@@ -23,7 +23,6 @@ class MultiScaleUncertaintyNet(nn.Module):
         self.features_per_step = features_per_step
         self.action_dim = action_dim
 
-        # 1. Multi-Scale Temporal Convolutions (Short, Medium, Long horizons)
         self.conv_short = nn.Conv1d(features_per_step, 24, kernel_size=3, padding=1)
         self.conv_med   = nn.Conv1d(features_per_step, 24, kernel_size=7, padding=3)
         self.conv_long  = nn.Conv1d(features_per_step, 24, kernel_size=15, padding=7)
@@ -33,54 +32,47 @@ class MultiScaleUncertaintyNet(nn.Module):
             nn.GELU()
         )
 
-        # 2. Spatial Cross-Asset Transformer Encoder
         trans_layer = nn.TransformerEncoderLayer(
             d_model=embed_dim, nhead=4, dim_feedforward=256, dropout=0.05, batch_first=True
         )
         self.transformer = nn.TransformerEncoder(trans_layer, num_layers=2)
 
-        # 3. Dense Representation Backbone
         self.fc = nn.Sequential(
             nn.Linear(embed_dim * history_len, 128),
             nn.GELU(),
             nn.LayerNorm(128)
         )
 
-        # 4. Heads: Actor, Critic, and Epistemic Uncertainty Head
         self.actor_head = nn.Linear(128, action_dim)
         self.critic_head = nn.Linear(128, 1)
         self.uncertainty_head = nn.Sequential(
             nn.Linear(128, 32),
             nn.GELU(),
             nn.Linear(32, 1),
-            nn.Softplus()  # Returns positive variance estimation
+            nn.Softplus()
         )
 
         self.log_std = nn.Parameter(torch.ones(action_dim) * -0.5)
 
     def forward(self, flat_obs):
+        flat_obs = torch.nan_to_num(flat_obs, nan=0.0, posinf=1.0, neginf=-1.0)
         b = flat_obs.shape[0]
-        # Reshape to (Batch, Features, Sequence_Length)
         x = flat_obs.reshape(b, self.history_len, self.features_per_step).transpose(1, 2)
 
-        # Extract multi-scale feature maps
         s_feat = F.gelu(self.conv_short(x))
         m_feat = F.gelu(self.conv_med(x))
         l_feat = F.gelu(self.conv_long(x))
 
-        # Concatenate along channel dimension & fuse
         multi_scale_cat = torch.cat([s_feat, m_feat, l_feat], dim=1)
         fused = self.scale_fusion(multi_scale_cat).transpose(1, 2)
 
-        # Pass through Transformer
         trans_out = self.transformer(fused)
         flat_repr = trans_out.reshape(b, -1)
         latent = self.fc(flat_repr)
 
-        # Compute Actor, Critic, and Uncertainty Variance
-        actor_logits = self.actor_head(latent)
-        value = self.critic_head(latent)
-        epistemic_uncertainty = self.uncertainty_head(latent)
+        actor_logits = torch.nan_to_num(self.actor_head(latent), nan=0.0)
+        value = torch.nan_to_num(self.critic_head(latent), nan=0.0)
+        epistemic_uncertainty = torch.nan_to_num(self.uncertainty_head(latent), nan=0.01)
 
         return actor_logits, value, epistemic_uncertainty
 
@@ -98,4 +90,4 @@ class MultiScaleUncertaintyNet(nn.Module):
                 dist = Normal(logits, torch.exp(self.log_std))
                 action = dist.sample().squeeze(0).cpu().numpy()
                 
-            return action, uncertainty.squeeze(0).cpu().numpy().item()
+            return np.nan_to_num(action, nan=0.0), uncertainty.squeeze(0).cpu().numpy().item()
