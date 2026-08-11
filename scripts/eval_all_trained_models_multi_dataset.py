@@ -1,15 +1,19 @@
 """
 ═══════════════════════════════════════════════════════════════════════════════
-  MULTI-DATASET ZERO-SHOT TRANSFER EVALUATION FOR RAI v6
+  MASTER TRAINED MODELS MULTI-DATASET COMPARISON PROTOCOL
   ════════════════════════════════════════════════════════
-  Evaluates trained RAI v6 models across 4 completely distinct real asset classes:
+  Evaluates and compares MULTIPLE TRAINED MODEL VARIANTS across 4 datasets:
 
     1. Crypto Assets (BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, LINK, LTC)
-    2. Global Equity Indices (US, Japan, Germany, UK, China, India, Brazil, etc.)
-    3. US Mega-Cap Stocks (AAPL, MSFT, NVDA, GOOGL, AMZN, META, LLY, JPM, etc.)
-    4. US Sector ETFs (Tech, Healthcare, Energy, Financials, Utilities, etc.)
+    2. Global Equity Indices (SPY, EWJ, EWG, EWU, MCHI, INDA, EWZ, EFA, EEM, FXI)
+    3. US Mega-Cap Stocks (AAPL, MSFT, NVDA, GOOGL, AMZN, META, LLY, JPM, JNJ, WMT)
+    4. US Sector ETFs (XLK, XLV, XLF, XLE, XLI, XLP, XLU, XLY, XLB, XLC)
 
-  Calculates: Return, Sharpe, Max Drawdown vs Equal Weight & SPY.
+  Trained Models Compared:
+    • RAI v6 Control (5 seeds) - Trained on G0 Random Walks
+    • RAI v7 Scenarios (5 seeds) - Trained on Factor-Driven Macro Scenarios
+    • RAI G0 Ladder (5 seeds) - Pure Random Walk Ablation
+    • RAI G6 Ladder (5 seeds) - Full Realistic Stochastic Market Simulator
 ═══════════════════════════════════════════════════════════════════════════════
 """
 
@@ -19,40 +23,37 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import yfinance as yf
+from scipy import stats
 
 warnings.filterwarnings('ignore')
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 V6_DIR = os.path.join(PROJECT_ROOT, "data", "robustness", "seeds")
-RESULTS_DIR = os.path.join(PROJECT_ROOT, "data", "multi_dataset_eval")
+V7_DIR = os.path.join(PROJECT_ROOT, "data", "v7_scenarios", "models")
+LADDER_DIR = os.path.join(PROJECT_ROOT, "data", "ablation_ladder", "models")
+RESULTS_DIR = os.path.join(PROJECT_ROOT, "data", "multi_model_multi_dataset")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 
-# ═══════════════════════════════════════════════
-#  MULTI-DATASET DEFINITIONS
-# ═══════════════════════════════════════════════
 DATASETS = {
     "1. Crypto Assets": {
         "tickers": ["BTC-USD", "ETH-USD", "BNB-USD", "XRP-USD", "ADA-USD", "DOGE-USD", "SOL-USD", "AVAX-USD", "LINK-USD", "LTC-USD"],
-        "start": "2020-01-01", "end": "2024-12-31"
+        "start": "2020-01-01", "end": "2026-08-08"
     },
     "2. Global Equity Indices": {
         "tickers": ["SPY", "EWJ", "EWG", "EWU", "MCHI", "INDA", "EWZ", "EFA", "EEM", "FXI"],
-        "start": "2015-01-01", "end": "2024-12-31"
+        "start": "2015-01-01", "end": "2026-08-08"
     },
     "3. US Mega-Cap Stocks": {
         "tickers": ["AAPL", "MSFT", "NVDA", "GOOGL", "AMZN", "META", "LLY", "JPM", "JNJ", "WMT"],
-        "start": "2015-01-01", "end": "2024-12-31"
+        "start": "2015-01-01", "end": "2026-08-08"
     },
     "4. US Sector ETFs": {
         "tickers": ["XLK", "XLV", "XLF", "XLE", "XLI", "XLP", "XLU", "XLY", "XLB", "XLC"],
-        "start": "2015-01-01", "end": "2024-12-31"
+        "start": "2015-01-01", "end": "2026-08-08"
     }
 }
 
 
-# ═══════════════════════════════════════════════
-#  MODEL DEFINITION
-# ═══════════════════════════════════════════════
 class DeepEndToEndTradingNet(nn.Module):
     def __init__(self, history_len=30, features_per_step=22, action_dim=11, embed_dim=64, nhead=2):
         super().__init__()
@@ -159,71 +160,98 @@ def compute_equal_weight(prices):
     }
 
 
-def main():
-    W = 100
-    print("="*W)
-    print("  MULTI-DATASET ZERO-SHOT TRANSFER EVALUATION FOR RAI v6")
-    print("  Evaluating Zero-Shot Transfer Across 4 Completely Distinct Real Asset Classes")
-    print("="*W, flush=True)
-
-    # Load 5 RAI v6 models
+def load_model_group(model_dir, prefix, seeds=5):
     models = []
-    for seed in range(1, 6):
-        p6 = os.path.join(V6_DIR, f"rai_v6_seed_{seed:02d}.pt")
-        if os.path.exists(p6):
+    for s in range(1, seeds + 1):
+        path = os.path.join(model_dir, f"{prefix}_{s:02d}.pt")
+        if os.path.exists(path):
             m = DeepEndToEndTradingNet()
-            m.load_state_dict(torch.load(p6, weights_only=True))
+            m.load_state_dict(torch.load(path, weights_only=True))
             m.eval()
             models.append(m)
+    return models
 
-    print(f"  ✓ Loaded {len(models)} RAI v6 seed models\n", flush=True)
 
-    all_results = {}
+def main():
+    W = 105
+    print("="*W)
+    print("  MASTER TRAINED MODELS MULTI-DATASET COMPARISON PROTOCOL")
+    print("="*W, flush=True)
+
+    # Load Model Ensembles
+    model_groups = {
+        "RAI v6 Control (Random Walk)": load_model_group(V6_DIR, "rai_v6_seed", 5),
+        "RAI v7 Scenarios (Macro Engine)": load_model_group(V7_DIR, "rai_v7_scenario_seed", 5),
+        "RAI G0 Uncorrelated GBM (5 seeds)": load_model_group(LADDER_DIR, "Level_0_GBM_seed", 5),
+        "RAI G6 Full Simulator (5 seeds)": load_model_group(LADDER_DIR, "Level_6_CombinedRealistic_seed", 5)
+    }
+
+    for name, group in model_groups.items():
+        print(f"  ✓ Loaded {len(group)} models for '{name}'")
+
+    print("\n", flush=True)
+
+    master_results = {}
 
     for d_name, d_info in DATASETS.items():
         print(f"\n{'═'*W}")
-        print(f"  DATASET: {d_name}")
+        print(f"  DATASET EVALUATION: {d_name}")
         print(f"{'═'*W}")
 
         try:
-            df = yf.download(d_info['tickers'], start=d_info['start'], end=d_info.get('end', None), progress=False, auto_adjust=True)
+            df = yf.download(d_info['tickers'], start=d_info['start'], end=d_info['end'], progress=False, auto_adjust=True)
             if isinstance(df.columns, pd.MultiIndex): df = df['Close']
             df = df.dropna()
             prices = df.values
-            print(f"  Data: {len(df)} trading days ({df.index[0].date()} → {df.index[-1].date()}) across {df.shape[1]} assets")
-            print(f"  Tickers: {', '.join(d_info['tickers'])}\n")
+            print(f"  Data: {len(df)} trading days ({df.index[0].date()} → {df.index[-1].date()}) across {df.shape[1]} assets\n")
         except Exception as e:
-            print(f"  ⚠ Could not download data for {d_name}: {e}")
+            print(f"  ⚠ Download failed for {d_name}: {e}")
             continue
 
+        print(f"  {'Model / Strategy Variant':<36} | {'Return (%)':<20} | {'Sharpe':<12} | {'Max DD (%)':<14} | {'Final Capital':<12}")
+        print(f"  {'-'*100}")
+
+        # Baseline
         ew_res = compute_equal_weight(prices)
-        m_res = [eval_model(m, prices) for m in models]
-        rets = [r['return_pct'] for r in m_res]
-        shs = [r['sharpe'] for r in m_res]
-        dds = [r['max_dd_pct'] for r in m_res]
-        best_idx = int(np.argmax(shs))
+        print(f"  {'Equal Weight (1/N Benchmark)':<36} | {ew_res['return_pct']:>+8.2f}%{'':<11} | {ew_res['sharpe']:>7.2f}{'':<5} | {ew_res['max_dd_pct']:>+9.2f}%{'':<4} | ${ew_res['final']:>10,.2f}")
+        print(f"  {'-'*100}")
 
-        print(f"  {'Strategy / Variant':<30} | {'Return (%)':<20} | {'Sharpe':<12} | {'Max DD (%)':<14} | {'Final Capital':<12}")
-        print(f"  {'-'*96}")
-        print(f"  {'Equal Weight (1/N Baseline)':<30} | {ew_res['return_pct']:>+8.2f}%{'':<11} | {ew_res['sharpe']:>7.2f}{'':<5} | {ew_res['max_dd_pct']:>+9.2f}%{'':<4} | ${ew_res['final']:>10,.2f}")
-        print(f"  {'-'*96}")
-        print(f"  {'RAI v6 (Ensemble 5-Seed Mean)':<30} | {np.mean(rets):>+8.2f}±{np.std(rets):<4.2f}%{'':<5} | {np.mean(shs):>7.2f}±{np.std(shs):<4.2f} | {np.mean(dds):>+9.2f}±{np.std(dds):<4.2f}% | ${np.mean([r['final'] for r in m_res]):>10,.2f}")
-        print(f"  {'RAI v6 (Best Seed)':<30} | {rets[best_idx]:>+8.2f}%{'':<11} | {shs[best_idx]:>7.2f}{'':<5} | {dds[best_idx]:>+9.2f}%{'':<4} | ${m_res[best_idx]['final']:>10,.2f}")
+        d_res = {"equal_weight": ew_res, "models": {}}
 
-        all_results[d_name] = {
-            "equal_weight": ew_res,
-            "rai_v6_mean": {"return": float(np.mean(rets)), "sharpe": float(np.mean(shs)), "max_dd": float(np.mean(dds))},
-            "rai_v6_best": m_res[best_idx]
-        }
+        for g_name, group in model_groups.items():
+            if not group: continue
+            res_list = [eval_model(m, prices) for m in group]
+            rets = [r['return_pct'] for r in res_list]
+            shs = [r['sharpe'] for r in res_list]
+            dds = [r['max_dd_pct'] for r in res_list]
+            best_idx = int(np.argmax(shs))
 
-    # Save JSON Output
-    out_path = os.path.join(RESULTS_DIR, "multi_dataset_eval_results.json")
-    with open(out_path, 'w') as f:
-        json.dump(all_results, f, indent=2)
+            mean_ret, std_ret = np.mean(rets), np.std(rets)
+            mean_sh, std_sh = np.mean(shs), np.std(shs)
+            mean_dd, std_dd = np.mean(dds), np.std(dds)
+            mean_fin = np.mean([r['final'] for r in res_list])
+
+            print(f"  {g_name:<36} | {mean_ret:>+8.2f}±{std_ret:<4.2f}%{'':<5} | {mean_sh:>7.2f}±{std_sh:<4.2f} | {mean_dd:>+9.2f}±{std_dd:<4.2f}% | ${mean_fin:>10,.2f}")
+            print(f"    └ Best Seed ({best_idx+1}){'':<19} | {rets[best_idx]:>+8.2f}%{'':<11} | {shs[best_idx]:>7.2f}{'':<5} | {dds[best_idx]:>+9.2f}%{'':<4} | ${res_list[best_idx]['final']:>10,.2f}")
+
+            d_res["models"][g_name] = {
+                "mean_return": float(mean_ret), "std_return": float(std_ret),
+                "mean_sharpe": float(mean_sh), "std_sharpe": float(std_sh),
+                "mean_max_dd": float(mean_dd), "std_max_dd": float(std_dd),
+                "best_seed_return": float(rets[best_idx]), "best_seed_sharpe": float(shs[best_idx]),
+                "best_seed_max_dd": float(dds[best_idx])
+            }
+
+        master_results[d_name] = d_res
+
+    # Save Output JSON
+    out_file = os.path.join(RESULTS_DIR, "all_trained_models_multi_dataset.json")
+    with open(out_file, 'w') as f:
+        json.dump(master_results, f, indent=2)
 
     print(f"\n{'═'*W}")
-    print(f"  ✅ MULTI-DATASET EVALUATION COMPLETE")
-    print(f"  Results saved to: {out_path}")
+    print(f"  ✅ MASTER TRAINED MODELS MULTI-DATASET EVALUATION COMPLETE")
+    print(f"  Results saved to: {out_file}")
     print(f"{'═'*W}\n", flush=True)
 
 if __name__ == "__main__":

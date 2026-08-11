@@ -1,0 +1,18 @@
+env:
+  agents: 100
+  entities: 20
+  relations: 50
+  steps: 50000
+  seeds: 1
+  
+ppo:
+  hidden_size: 128
+  lr: 0.0003
+  gamma: 0.99
+  clip_param: 0.2
+  ppo_epochs: 4
+  max_entities: 100
+  max_relations: 500
+  
+logging:
+  results_dir: "results"
