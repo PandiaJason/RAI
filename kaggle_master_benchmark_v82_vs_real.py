@@ -5,8 +5,8 @@
 Single-Cell Kaggle Master Benchmark Suite (Multi-GPU Parallelization for 2x NVIDIA T4)
 
 Runtime Optimization:
-  With 2x NVIDIA T4 GPUs (cuda:0 & cuda:1), seeds are processed concurrently across GPUs,
-  reducing the 10-seed master evaluation runtime from 4.1 hours -> ~2.0 HOURS!
+  With 2x NVIDIA T4 GPUs (cuda:0 & cuda:1) and 5 independent seeds [42, 101, 202, 303, 404],
+  the master benchmark completes cleanly in ~50 MINUTES!
 ====================================================================================================
 """
 
@@ -27,7 +27,7 @@ warnings.filterwarnings("ignore")
 
 NUM_GPUS = torch.cuda.device_count()
 DEVICES = [torch.device(f'cuda:{i}') for i in range(NUM_GPUS)] if NUM_GPUS > 0 else [torch.device('cpu')]
-SEEDS = [42, 101, 202, 303, 404, 505, 606, 707, 808, 909]
+SEEDS = [42, 101, 202, 303, 404] # 5 Seeds for ~50 minute Dual GPU Execution
 
 print(f"✓ Dual T4 Optimization Active | Detected {NUM_GPUS} GPUs: {[str(d) for d in DEVICES]} | PyTorch: {torch.__version__}")
 
@@ -673,7 +673,7 @@ def _run_seed_evaluation(args):
 
 def execute_master_benchmark():
     print("=" * 110)
-    print(f" 🏆 EXECUTING RIGOROUS MASTER CONTROLLED BENCHMARK ACROSS 10 SEEDS (PARALLELIZED ON {len(DEVICES)} GPUs)")
+    print(f" 🏆 EXECUTING RIGOROUS MASTER CONTROLLED BENCHMARK ACROSS {len(SEEDS)} SEEDS (PARALLELIZED ON {len(DEVICES)} GPUs)")
     print(" Model Arms: LSTM-DNN (70% Real) | Real-PPO (70% Real) | RAI v8.2 Zero-Shot (0% Real)")
     print("=" * 110 + "\n")
 
@@ -696,7 +696,7 @@ def execute_master_benchmark():
     df = pd.DataFrame(master_records)
     
     print("\n" + "═" * 110)
-    print(" 🏆 FINAL MASTER CONTROLLED BENCHMARK LEADERBOARD (MEAN ± STD ACROSS 10 SEEDS)")
+    print(f" 🏆 FINAL MASTER CONTROLLED BENCHMARK LEADERBOARD (MEAN ± STD ACROSS {len(SEEDS)} SEEDS)")
     print("═" * 110)
     summary = df.groupby(["Model Arm", "Universe"])[["Return (%)", "Sharpe", "Max DD (%)", "Cash (%)"]].agg(['mean', 'std'])
     print(summary.to_string())
