@@ -1,12 +1,16 @@
 """
 ====================================================================================================
-🚀 RAI v6 DUAL GPU T4 x2 ENGINE (OPTIMIZED ULTRA-FAST PIPELINE)
+🏆 RAI v6: ZERO-SHOT SIM-TO-REAL PORTFOLIO MANAGEMENT (DUAL GPU T4 x2 OPTIMIZED + ROBUST NETWORK)
 ====================================================================================================
-Overview:
-  Optimized rollout collection + DataParallel mini-batch PPO updates for Kaggle GPU T4 x2.
-  Fast single-device inference during rollout + multi-GPU batch training during PPO updates.
+Kaggle Notebook / Standalone Script
+
+Note on Kaggle Internet Access:
+  Ensure 'Internet On' is toggled ON in the Kaggle right sidebar panel under Settings -> Internet!
 ====================================================================================================
 """
+
+# Install required packages
+!pip install -q yfinance gymnasium torch pandas numpy matplotlib
 
 import os, sys, time, warnings
 import numpy as np
@@ -17,8 +21,9 @@ import torch.nn.functional as F
 from torch.distributions import Normal
 import yfinance as yf
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
+# Automatic Dual GPU Device Selection
 N_GPUS = torch.cuda.device_count()
 PRIMARY_DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 SEED = 42
@@ -26,6 +31,8 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(SEED)
+
+print(f"✓ Dual GPU Engine Initialized | GPUs: {N_GPUS} | Primary Device: {PRIMARY_DEVICE}")
 
 
 # ==================================================================================================
@@ -204,7 +211,7 @@ class DeepEndToEndTradingNet(nn.Module):
 
 
 # ==================================================================================================
-# SECTION 3: ULTRA-FAST DUAL GPU ACCELERATED TRAINING (NVIDIA T4 x2)
+# SECTION 3: DUAL GPU ACCELERATED PPO TRAINING (DataParallel)
 # ==================================================================================================
 def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
     print("=" * 100)
@@ -216,6 +223,7 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
     model = DeepEndToEndTradingNet().to(PRIMARY_DEVICE)
 
     if N_GPUS > 1:
+        print(f"  ✓ DataParallel Activated across {N_GPUS} NVIDIA T4 GPUs!")
         parallel_model = nn.DataParallel(model)
     else:
         parallel_model = model
@@ -228,7 +236,7 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
     while step < total_steps:
         obs_b, act_b, rew_b, val_b, logp_b = [], [], [], [], []
         
-        # Single-model fast rollout collection (avoids DataParallel overhead per single step)
+        # Fast single-GPU rollout collection
         for _ in range(1024):
             obs_t = torch.FloatTensor(obs).unsqueeze(0).to(PRIMARY_DEVICE)
             with torch.no_grad():
@@ -264,7 +272,7 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
         old_logp_t = torch.FloatTensor(np.array(logp_b)).to(PRIMARY_DEVICE)
         adv_t = (adv_t - adv_t.mean()) / (adv_t.std() + 1e-8)
 
-        # Multi-GPU DataParallel mini-batch PPO update
+        # Dual-GPU DataParallel PPO mini-batch updates
         for _ in range(4):
             idx = np.random.permutation(len(obs_b))
             for s in range(0, len(obs_b), 256):
@@ -291,17 +299,37 @@ def train_rai_v6_dual_gpu(total_steps=50_000, seed=42):
 
 
 # ==================================================================================================
-# SECTION 4: REAL-WORLD ZERO-SHOT EVALUATION & LIVE PORTFOLIO ALLOCATION
+# SECTION 4: REAL-WORLD ZERO-SHOT EVALUATION (WITH ROBUST NETWORK RETRY)
 # ==================================================================================================
+def fetch_market_data_robust(tickers):
+    """Fetches real market prices with retry logic & friendly Kaggle internet guidance."""
+    print(f"  📥 Fetching live market data for {len(tickers)} assets: {', '.join(tickers)}...")
+    for attempt in range(1, 4):
+        try:
+            df = yf.download(tickers, period="2y", progress=False, auto_adjust=True)
+            if isinstance(df.columns, pd.MultiIndex):
+                df = df['Close']
+            df = df.dropna().ffill().bfill()
+            if not df.empty and len(df) > 50:
+                print(f"  ✓ Market data loaded successfully! ({len(df)} trading days)")
+                return df
+        except Exception as e:
+            print(f"  ⚠️ Network attempt {attempt}/3 failed: {e}")
+            time.sleep(2)
+
+    raise RuntimeError(
+        "\n❌ ERROR: Could not connect to Yahoo Finance.\n"
+        "👉 KAGGLE INSTRUCTION: Please toggle 'Internet On' in Kaggle Notebook Options!\n"
+        "   (Right sidebar -> Notebook Options -> Internet -> Toggle ON)"
+    )
+
+
 def evaluate_zero_shot_real(model, tickers):
     print("=" * 100)
-    print(f"  📈 ZERO-SHOT SIM-TO-REAL EVALUATION ON REAL MARKET DATA: {', '.join(tickers)}")
+    print(f"  📈 ZERO-SHOT SIM-TO-REAL EVALUATION ON REAL MARKET DATA")
     print("=" * 100)
 
-    df = yf.download(tickers, period="2y", progress=False, auto_adjust=True)
-    if isinstance(df.columns, pd.MultiIndex):
-        df = df['Close']
-    df = df.dropna().ffill().bfill()
+    df = fetch_market_data_robust(tickers)
     prices = df.values
     latest_date = df.index[-1].strftime('%Y-%m-%d')
     T, N = prices.shape
@@ -391,6 +419,7 @@ def evaluate_zero_shot_real(model, tickers):
     print("=" * 100)
 
 
+# Execute full script
 if __name__ == "__main__":
     ASSET_UNIVERSE = ["SPY", "QQQ", "AAPL", "NVDA", "MSFT", "GOOGL", "AMZN", "META", "TLT", "GLD"]
     trained_model = train_rai_v6_dual_gpu(total_steps=50_000, seed=SEED)
