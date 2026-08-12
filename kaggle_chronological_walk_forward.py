@@ -632,11 +632,15 @@ def train_rai_v82_procedural_model(seed=42, device=DEVICES[0]):
 def evaluate_model_walk_forward(model, prices_series, device=DEVICES[0], max_days=None):
     """
     Evaluates a frozen model day-by-day over a real market price series up to max_days.
+    Uses the first 30 days for observation history warmup, then trades for max_days steps.
     """
-    if max_days is not None:
-        prices_series = prices_series[:max_days]
-
     T, N = prices_series.shape
+    if T <= 30:
+        return 0.0, 0.0, 0.0
+
+    trading_steps = min(T - 30, max_days) if max_days is not None else (T - 30)
+    eval_end_t = 30 + trading_steps
+
     prices = prices_series / prices_series[0]
     wealth = 10000.0
     peak_wealth = 10000.0
@@ -645,19 +649,20 @@ def evaluate_model_walk_forward(model, prices_series, device=DEVICES[0], max_day
     cash_frac = 0.50
     stock_weights = np.ones(N) / float(N)
 
+    # 1. Warmup observation history window using the first 30 days
     obs_h = []
-    for t in range(min(30, T)):
+    for t in range(30):
         p, pp = prices[t], prices[max(0, t - 1)]
         obs_h.append(np.concatenate([
             p, np.log(p / np.maximum(1e-4, pp)),
-            [cash_frac, np.clip((wealth - peak_wealth) / max(1e-4, peak_wealth), -1, 0)]
+            [cash_frac, 0.0]
         ]).astype(np.float32))
 
-    for t in range(30, T):
+    # 2. Main Portfolio Trading Loop from day 30 to eval_end_t
+    for t in range(30, eval_end_t):
         p_prev, p_curr = prices[t - 1], prices[t]
         asset_returns = (p_curr - p_prev) / np.maximum(1e-4, p_prev)
 
-        # 1. Update portfolio wealth based on real market returns from t-1 to t
         cash_val = wealth * cash_frac
         stock_val = wealth * (1.0 - cash_frac)
         new_stock_val = np.sum(stock_val * stock_weights * (1.0 + asset_returns))
@@ -665,7 +670,6 @@ def evaluate_model_walk_forward(model, prices_series, device=DEVICES[0], max_day
         peak_wealth = max(peak_wealth, wealth)
         equity_curve.append(wealth)
 
-        # 2. Query frozen policy model for target allocation at step t
         flat_obs = np.concatenate(obs_h).astype(np.float32)
         act = model.get_action(flat_obs, device=device)
 
@@ -673,7 +677,6 @@ def evaluate_model_walk_forward(model, prices_series, device=DEVICES[0], max_day
         exp_a = np.exp(act[1:] - np.max(act[1:]))
         target_stock_w = exp_a / np.sum(exp_a)
 
-        # 3. Apply transaction fees if allocation drifts significantly
         drift = abs(cash_frac - c_frac) + np.sum(np.abs(stock_weights - target_stock_w))
         if drift > 0.03:
             wealth -= wealth * drift * 0.001
@@ -692,7 +695,7 @@ def evaluate_model_walk_forward(model, prices_series, device=DEVICES[0], max_day
     r = np.diff(eq_a) / np.maximum(1e-8, eq_a[:-1])
     pk = np.maximum.accumulate(eq_a)
     ret_pct = (eq_a[-1] / eq_a[0] - 1) * 100
-    sharpe = float(np.mean(r) / np.std(r) * np.sqrt(252)) if np.std(r) > 1e-8 else 0.
+    sharpe = float(np.mean(r) / np.std(r) * np.sqrt(252)) if (len(r) > 1 and np.std(r) > 1e-8) else 0.
     max_dd = float(np.min((eq_a - pk) / pk) * 100)
 
     return ret_pct, sharpe, max_dd
